@@ -3599,10 +3599,10 @@ def main():
             st.cache_data.clear()
             st.rerun()
 
-        with st.expander("📥 數據回填工具", expanded=False):
-            c1, c2 = st.columns(2)
-            c1.button("📺 YT", key="yt_btn", use_container_width=True)
-            c2.button("📖 Wiki", key="wiki_btn", use_container_width=True)
+        # with st.expander("📥 數據回填工具", expanded=False):
+        #     c1, c2 = st.columns(2)
+        #     c1.button("📺 YT", key="yt_btn", use_container_width=True)
+        #     c2.button("📖 Wiki", key="wiki_btn", use_container_width=True)
 
         st.caption(f"Weights: F&G {FEAR_GREED_WEIGHT} | YT {YOUTUBE_WEIGHT}")
 
