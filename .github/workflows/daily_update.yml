@@ -1,0 +1,37 @@
+name: Daily Data Update
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # 每天 UTC 00:00 (台灣早上 8:00)
+  workflow_dispatch:      # 允許手動按鈕觸發
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install gspread oauth2client pandas requests numpy
+
+      # 執行 Wiki 更新 (讀取環境變數)
+      - name: Run Wiki Backfill
+        env:
+          GCP_SERVICE_ACCOUNT_JSON: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
+        run: python app_wiki.py
+
+      # 執行 YouTube 更新 (更新最近 1 個月)
+      - name: Run YouTube Backfill
+        env:
+          GCP_SERVICE_ACCOUNT_JSON: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: python app_yt.py 1
