@@ -1,6 +1,3 @@
-scikit-learn
-yfinance
-pandas-datareader
 streamlit
 pandas
 numpy
@@ -9,3 +6,7 @@ plotly
 gspread
 oauth2client
 feedparser
+yfinance
+scikit-learn
+pandas-datareader
+setuptools
