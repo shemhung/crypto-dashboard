@@ -2702,7 +2702,6 @@ def run_backtest(df, trade_asset, buy_amount, buy_min, buy_max, sell_pct, sell_m
     return pd.DataFrame(trade_history), pd.DataFrame(portfolio_history), buy_days, sell_days, final_price
 
 def run_portfolio_backtest(df_risk, asset_weights, total_daily_buy, buy_min, buy_max, sell_pct, sell_min, sell_max, start_date, fee_rate=0.001):
-    # 1. 預抓價格 (維持不變)
     all_prices = {}
     for asset in asset_weights.keys():
         if asset == "BTC": all_prices[asset] = df_risk.set_index('open_time')['close']
@@ -2711,23 +2710,29 @@ def run_portfolio_backtest(df_risk, asset_weights, total_daily_buy, buy_min, buy
             if not df_asset.empty: all_prices[asset] = df_asset.set_index('open_time')['close']
 
     df_test = df_risk[df_risk['open_time'].dt.date >= start_date].copy()
-    if df_test.empty: return pd.DataFrame(), {}, {}
+    if df_test.empty: return pd.DataFrame(), {}, {}, 0, 0 
 
-    # 2. 初始化各幣種狀態 (增加 peak 與 mdd 追蹤)
     asset_results = {asset: {
         'balance': 0.0, 'cum_invested': 0.0, 'current_cost': 0.0, 
         'realized_pnl': 0.0, 'fees': 0.0,
-        'peak': 0.0, 'mdd': 0.0 # 用於計算單幣 MDD
+        'peak': 0.0, 'mdd': 0.0 
     } for asset in asset_weights.keys()}
     
     portfolio_history = []
     
-    # 3. 逐日模擬
+    # --- 新增計數器 ---
+    total_buy_days = 0
+    total_sell_days = 0
+    
     for _, row in df_test.iterrows():
         date = row['open_time']
         risk = row['total_risk']
         is_buy, is_sell = buy_min <= risk < buy_max, sell_min <= risk < sell_max
         daily_mkt_val = 0.0
+
+        # --- 統計天數 ---
+        if is_buy: total_buy_days += 1
+        if is_sell: total_sell_days += 1
 
         for asset, weight in asset_weights.items():
             if asset not in all_prices or date not in all_prices[asset].index: continue
@@ -2751,7 +2756,6 @@ def run_portfolio_backtest(df_risk, asset_weights, total_daily_buy, buy_min, buy
                 res['current_cost'] -= sold_cost
                 res['fees'] += fee
 
-            # 計算單幣今日總權益 (市值 + 已實現) 用於計算該幣 MDD
             asset_equity = (res['balance'] * price) + res['realized_pnl']
             if asset_equity > res['peak']: res['peak'] = asset_equity
             if res['peak'] > 0:
@@ -2767,7 +2771,7 @@ def run_portfolio_backtest(df_risk, asset_weights, total_daily_buy, buy_min, buy
             'Realized': total_realized
         })
         
-    return pd.DataFrame(portfolio_history), asset_results, all_prices
+    return pd.DataFrame(portfolio_history), asset_results, all_prices, total_buy_days, total_sell_days
 
 import json
 
@@ -3668,8 +3672,7 @@ def main():
             df_recent = df[df['open_time'] >= "2017-08-17"]
             st.plotly_chart(get_risk_chart_figure(df_recent, use_log=use_log), use_container_width=True)
         with core_sub_tabs[2]:
-            # --- 步驟 1：參數設定 (Expander) ---
-            # --- 使用亮色容器包裝步驟 1 ---
+            # --- 步驟 1：參數設定 (保持原本的 Expander) ---
             st.markdown('<div class="force-light"></div>', unsafe_allow_html=True)
             with st.expander("🛠️ 步驟 1：配置投資組合與參數", expanded=True):
                 col_a1, col_a2, col_a3, col_a4 = st.columns([1.5, 1.5, 1.2, 1.2])
@@ -3705,11 +3708,13 @@ def main():
                     if abs(total_pct - 100) > 0.1:
                         st.error(f"❌ 權重總和需為 100% (目前: {total_pct}%)")
                         st.stop()
-            st.markdown('</div>', unsafe_allow_html=True) # 關閉容器
-            # --- 步驟 2：執行運算與呈現你要求的指標 ---
+            st.markdown('</div>', unsafe_allow_html=True) 
+
+            # --- 步驟 2：執行運算與呈現指標 ---
             if selected_assets:
                 with st.spinner("🚀 正在執行同步回測模擬..."):
-                    portfolio_df, asset_results, all_prices = run_portfolio_backtest(
+                    # 重要：這裡要接收 5 個值
+                    portfolio_df, asset_results, all_prices, buy_count, sell_count = run_portfolio_backtest(
                         df, asset_weights, total_buy_usdt, 
                         buy_range[0], buy_range[1],
                         sell_pct_val, sell_range[0], sell_range[1],
@@ -3717,12 +3722,7 @@ def main():
                     )
                 
                 if not portfolio_df.empty:
-                    # 計算 MDD (最大回撤)
-                    portfolio_df['Peak'] = portfolio_df['Equity'].cummax()
-                    portfolio_df['DD'] = (portfolio_df['Equity'] - portfolio_df['Peak']) / portfolio_df['Peak']
-                    mdd_val = portfolio_df['DD'].min() * 100
-
-                    # 取得最終數據
+                    # --- 【關鍵點】在此處先行計算所有變數，避免 NameError ---
                     final_p = portfolio_df.iloc[-1]
                     total_invested = final_p['Total_Cost']
                     total_equity = final_p['Equity']
@@ -3732,59 +3732,69 @@ def main():
                     total_unrealized = total_net_profit - total_realized
                     total_fees = sum(r['fees'] for r in asset_results.values())
                     
-                    # 為了顯示單幣種（如 BTC）的價格與均價
-                    main_asset = "BTC" if "BTC" in selected_assets else selected_assets[0]
-                    curr_main_price = all_prices[main_asset].iloc[-1]
-                    main_avg_cost = asset_results[main_asset]['current_cost'] / asset_results[main_asset]['balance'] if asset_results[main_asset]['balance'] > 0 else 0
+                    # 計算 MDD
+                    portfolio_df['Peak'] = portfolio_df['Equity'].cummax()
+                    portfolio_df['DD'] = (portfolio_df['Equity'] - portfolio_df['Peak']) / portfolio_df['Peak']
+                    mdd_val = portfolio_df['DD'].min() * 100
 
                     st.markdown("---")
-                    # ==========================================
-                    # 1. 🚀 頂部專業看板 (Overall Dashboard)
-                    # ==========================================
                     st.markdown("### 🚀 策略核心指標")
                     
+                    # --- UI 改為 5 欄 ---
                     roi_color = "#00e676" if total_net_profit >= 0 else "#ff5252"
-                    c1, c2, c3 = st.columns(3)
+                    c1, c2, c3, c4, c5 = st.columns(5)
 
                     with c1:
                         st.markdown(f"""<div class="metric-card" style="border-top: 4px solid {roi_color};">
-                            <div class="metric-label">組合總獲利 (Net PnL)</div>
-                            <div class="metric-value" style="color: {roi_color};">${total_net_profit:,.0f}</div>
-                            <div class="metric-sub">投資報酬率: {total_roi:.1f}%</div>
+                            <div class="metric-label">總獲利</div>
+                            <div class="metric-value" style="color: {roi_color} !important;">${total_net_profit:,.0f}</div>
+                            <div class="metric-sub">{total_roi:.1f}% ROI</div>
                         </div>""", unsafe_allow_html=True)
 
                     with c2:
-                        st.markdown(f"""<div class="metric-card" style="border-top: 4px solid #ffffff;">
-                            <div class="metric-label">目前組合總權益</div>
-                            <div class="metric-value">${total_equity:,.0f}</div>
-                            <div class="metric-sub">含幣值 + 剩餘現金</div>
+                        st.markdown(f"""<div class="metric-card">
+                            <div class="metric-label">買入天數</div>
+                            <div class="metric-value" style="color: #00e676 !important;">{buy_count} 天</div>
+                            <div class="metric-sub">觸發 Buy 區間</div>
                         </div>""", unsafe_allow_html=True)
 
                     with c3:
-                        st.markdown(f"""<div class="metric-card" style="border-top: 4px solid #ff1744;">
-                            <div class="metric-label">最大回撤 (MDD)</div>
-                            <div class="metric-value" style="color: #ff1744;">{mdd_val:.2f}%</div>
-                            <div class="metric-sub">策略壓力耐受度</div>
+                        st.markdown(f"""<div class="metric-card">
+                            <div class="metric-label">止盈天數</div>
+                            <div class="metric-value" style="color: #ff5252 !important;">{sell_count} 天</div>
+                            <div class="metric-sub">觸發 Sell 區間</div>
                         </div>""", unsafe_allow_html=True)
 
-                    st.write("") # 留白
+                    with c4:
+                        st.markdown(f"""<div class="metric-card">
+                            <div class="metric-label">最大回撤</div>
+                            <div class="metric-value" style="color: #ffb300 !important;">{mdd_val:.1f}%</div>
+                            <div class="metric-sub">MDD</div>
+                        </div>""", unsafe_allow_html=True)
 
-                    # 2. 💰 資金與成本 (按要求排列)
-                    # ==========================================
-                    st.subheader("💰 資金與成本")
+                    with c5:
+                        st.markdown(f"""<div class="metric-card">
+                            <div class="metric-label">總權益</div>
+                            <div class="metric-value">${total_equity:,.0f}</div>
+                            <div class="metric-sub">含市值與現金</div>
+                        </div>""", unsafe_allow_html=True)
+
+                    # --- 資金與成本指標 ---
+                    st.subheader("💰 資金與成本細節")
                     r2_1, r2_2, r2_3, r2_4 = st.columns(4)
                     r2_1.metric("總投入本金", f"${total_invested:,.0f}")
                     r2_2.metric("手續費總支出", f"${total_fees:,.0f}")
-                    r2_3.metric("已實現損益 (Realized)", f"${total_realized:,.0f}")
-                    r2_4.metric("未實現損益 (Unrealized)", f"${total_unrealized:,.0f}")
+                    r2_3.metric("已實現損益", f"${total_realized:,.0f}")
+                    r2_4.metric("未實現損益", f"${total_unrealized:,.0f}")
 
-                    # 曲線圖
+                    # --- 繪圖 (加入唯一 Key) ---
                     fig_p = go.Figure()
                     fig_p.add_trace(go.Scatter(x=portfolio_df['Date'], y=portfolio_df['Equity'], name='組合淨值', line=dict(color='#00e676', width=2)))
                     fig_p.add_trace(go.Scatter(x=portfolio_df['Date'], y=portfolio_df['Total_Cost'], name='投入本金', line=dict(color='#ef5350', dash='dash')))
                     fig_p.update_layout(template="plotly_dark", height=400, hovermode="x unified")
-                    st.plotly_chart(fig_p, use_container_width=True)
+                    st.plotly_chart(fig_p, use_container_width=True, key="unique_backtest_equity_chart")
 
+                    st.write("") # 留白
                     # ==========================================
                     # 新增：當前資產市值分佈 (圓餅圖)
                     # ==========================================
@@ -3812,7 +3822,7 @@ def main():
                             margin=dict(l=20, r=20, t=30, b=20),
                             legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5)
                         )
-                        st.plotly_chart(fig_pie, use_container_width=True)
+                        st.plotly_chart(fig_pie, use_container_width=True, key="backtest_pie_chart")
                     # ==========================================
                     # 3. 單幣種拆解 (穿透分析 - 完整九大指標)
                     # ==========================================
