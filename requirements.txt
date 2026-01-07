@@ -1,11 +1,11 @@
+scikit-learn
+yfinance
+pandas-datareader
 streamlit
 pandas
 numpy
+requests
+plotly
 gspread
 oauth2client
-plotly
-yfinance
-pandas_datareader
-scipy
-requests
 feedparser
