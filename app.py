@@ -3604,7 +3604,7 @@ def main():
         #     c1.button("📺 YT", key="yt_btn", use_container_width=True)
         #     c2.button("📖 Wiki", key="wiki_btn", use_container_width=True)
 
-        st.caption(f"Weights\n: F&G {FEAR_GREED_WEIGHT} | YT {YOUTUBE_WEIGHT} | Wiki {WIKIPEDIA_WEIGHT}")
+        st.caption(f"⚖️: F&G {FEAR_GREED_WEIGHT} | YT {YOUTUBE_WEIGHT} | Wiki {WIKIPEDIA_WEIGHT}")
 
      
 
