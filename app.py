@@ -3502,6 +3502,12 @@ def main():
             text-align: center;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
             margin-bottom: 15px;
+            
+            height: 180px;            /* 強制三張卡片高度完全一致 */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;  /* 內容垂直置中 */
+            align-items: center;      /* 內容水平置中 */
         }
         /* 中英文標籤變純白色 */
         .metric-card .metric-label, .metric-card .metric-sub { 
@@ -3518,7 +3524,26 @@ def main():
             text-shadow: 0 0 15px rgba(0, 255, 194, 0.7); 
             margin: 10px 0px;
         }
+       /* 進度條容器 */
+        .risk-progress-container {
+            background-color: #1c212d !important;
+            border-radius: 10px;
+            height: 12px !important;
+            width: 100% !important;
+            margin-top: 15px;
+            border: 1px solid #2d3139;
+            overflow: hidden;
+            position: relative; /* 確保內部定位正確 */
+        }
 
+        /* 進度條彩色部分 */
+        .risk-progress-fill {
+            height: 100% !important;   /* 高度設為 100% 填滿容器 */
+            border-radius: 10px;
+            box-shadow: 0 0 15px rgba(0, 255, 194, 0.6);
+            transition: width 0.8s ease-in-out;
+            display: block !important;
+        }
         /* (3) 亮色區域強力穿透 (強制白底黑字) */
         div:has(> .force-light) + div [data-testid="stExpander"],
         div:has(> .force-light) + div [data-testid="stExpander"] details,
@@ -3617,15 +3642,43 @@ def main():
     
     h1, h2, h3 = st.columns([1, 1, 2])
     with h1:
-        st.metric("BTC Price", f"${curr_price:,.0f}", f"{price_pct:.2f}%")
+        price_color = "#00FFC2" if price_pct >= 0 else "#ff5252"
+        st.markdown(f"""
+            <div class="metric-card" style="border-left: 5px solid {price_color};">
+                <div class="metric-label">BTC 當前價格 (Price)</div>
+                <div class="metric-value" style="color: {price_color} !important;">${curr_price:,.0f}</div>
+                <div class="metric-sub" style="color: {price_color};">
+                    {"▲" if price_pct >= 0 else "▼"} {abs(price_pct):.2f}% (24h)
+                </div>
+                <div style="height: 25px;"></div> </div>
+        """, unsafe_allow_html=True)
     with h2:
-        st.metric("Risk Index", f"{curr_risk:.2f}", delta=f"{curr_risk - prev_risk:.3f}", delta_color="inverse")
+        if curr_risk <= 0.4: bar_color = "#00FFC2"
+        elif curr_risk >= 0.8: bar_color = "#ff5252"
+        else: bar_color = "#ffeb3b"
+        
+        # 確保轉換為 0-100 的數字
+        p_val = int(float(curr_risk) * 100)
+
+        st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-label">社交風險指數 (Social Risk)</div>
+                <div class="metric-value" style="color: {bar_color} !important;">{curr_risk:.2f}</div>
+                <div class="risk-progress-container">
+                    <div class="risk-progress-fill" style="width: {p_val}%; background-color: {bar_color};"></div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
     with h3:
-        # 使用卡片突顯策略
-        st.markdown(f"""<div class="metric-card" style="border-left: 5px solid {advice_color};">
+       st.markdown(f"""
+        <div class="metric-card" style="border-left: 5px solid {advice_color};">
             <div class="metric-label">目前操作建議 (Current Advice)</div>
-            <div class="metric-value" style="color: {advice_color};">{advice_title}</div>
-        </div>""", unsafe_allow_html=True)
+            <div class="metric-value" style="color: {advice_color} !important; font-size: 45px;">
+                {advice_title} </div>
+            <div class="metric-sub" style="color: {advice_color};">基於社交情緒模型計算</div>
+            <div style="height: 25px;"></div>
+        </div>
+    """, unsafe_allow_html=True)
     
     st.divider()
 
