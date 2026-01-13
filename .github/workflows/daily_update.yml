@@ -2,12 +2,15 @@ name: Daily Data Update
 
 on:
   schedule:
-    - cron: '0 3 * * *'  # 每天 UTC 00:00 (台灣早上 9:00)
-  workflow_dispatch:      # 允許手動按鈕觸發
+    - cron: '0 3 * * *'  # 每天台灣時間早上 9:00
+  workflow_dispatch:      # 允許手動觸發
 
 jobs:
   update-data:
     runs-on: ubuntu-latest
+    # 給予寫入權限
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout code
@@ -23,15 +26,22 @@ jobs:
           python -m pip install --upgrade pip
           pip install gspread oauth2client pandas requests numpy
 
-      # 執行 Wiki 更新 (讀取環境變數)
-      - name: Run Wiki Backfill
+      - name: Run Wiki Update
         env:
           GCP_SERVICE_ACCOUNT_JSON: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
         run: python app_wiki.py
 
-      # 執行 YouTube 更新 (更新最近 1 個月)
-      - name: Run YouTube Backfill
+      - name: Run YouTube Update & Generate JSON
         env:
           GCP_SERVICE_ACCOUNT_JSON: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
         run: python app_yt.py 1
+
+      # 🚀 新增：將產生的 JSON 推送到 GitHub 倉庫
+      - name: Commit and Push JSON API
+        run: |
+          git config --global user.name "GitHub Action Bot"
+          git config --global user.email "actions@github.com"
+          git add latest_risk.json
+          git commit -m "🤖 自動更新 API 數據: $(date +'%Y-%m-%d %H:%M')" || echo "無變更需要提交"
+          git push
