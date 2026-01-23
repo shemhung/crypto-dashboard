@@ -329,6 +329,56 @@ def fetch_google_news_mentions(days_back=90):
     except: pass
     return pd.DataFrame()
 
+# --- App Store Rank ---
+def fetch_coinbase_rank():
+    """使用最穩定的 iTunes RSS 接口抓取排名"""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    
+    # 1. 總榜免費 App (前 100 名)
+    overall_url = "https://itunes.apple.com/us/rss/topfreeapplications/limit=100/json"
+    # 2. 財務類別免費 App (前 100 名, Genre 6005 是 Finance)
+    finance_url = "https://itunes.apple.com/us/rss/topfreeapplications/limit=100/genre=6005/json"
+    
+    try:
+        # 獲取總榜資料
+        overall_resp = requests.get(overall_url, headers=headers, timeout=10)
+        overall_data = overall_resp.json()
+        overall_entries = overall_data.get('feed', {}).get('entry', [])
+        
+        # 獲取財務類別資料
+        finance_resp = requests.get(finance_url, headers=headers, timeout=10)
+        finance_data = finance_resp.json()
+        finance_entries = finance_data.get('feed', {}).get('entry', [])
+
+        # 提取 App 名稱列表
+        top_apps = [entry.get('im:name', {}).get('label', '') for entry in overall_entries]
+        finance_apps = [entry.get('im:name', {}).get('label', '') for entry in finance_entries]
+        
+        # 找尋總榜排名 (1-100)
+        overall_rank = None
+        for i, name in enumerate(top_apps):
+            if "coinbase" in name.lower():
+                overall_rank = i + 1
+                break
+        
+        # 找尋財務類別排名 (1-100)
+        finance_rank = None
+        for i, name in enumerate(finance_apps):
+            if "coinbase" in name.lower():
+                finance_rank = i + 1
+                break
+                
+        return {
+            "overall": overall_rank,
+            "finance": finance_rank,
+            "top_apps": top_apps
+        }
+    except Exception as e:
+        st.error(f"App Store 資料更新失敗: {e}")
+        return None
+    
 # --- Rainbow Chart ---
 def compute_rainbow_risk(current_price):
     try:
@@ -3616,7 +3666,7 @@ def main():
         # 這裡保留你原本的內容標籤，但加上 Emoji 讓視覺更直覺
         menu = st.radio(
             label="隱藏標籤",
-            options=["🎯 策略執行", "🌪️ 變盤預警", "🪐 宏觀週期指標", "🔭 空間視覺"],
+            options=["🎯 策略執行", "🌪️ 變盤預警", "🪐 宏觀週期指標", "🔭 空間視覺", "📈 散戶動向監控"],
             label_visibility="collapsed" 
         )
         
@@ -4453,6 +4503,57 @@ def main():
         
         st.components.v1.html(html_data, height=500, scrolling=False)
         st.caption("👆 上方為預覽視窗 (按一下可試玩，但建議下載後全螢幕體驗最佳)")
+    elif menu == "📈 散戶動向監控":
+        st.subheader("📈 Coinbase 實時排名 (散戶心理指標)")
+        
+        with st.spinner("正在同步 App Store 數據..."):
+            data = fetch_coinbase_rank()
+
+        if data:
+            rank = data['overall']
+            finance_rank = data['finance']
+            top_100 = data['top_apps']
+            
+            # 判斷顏色與狀態
+            if rank:
+                overall_text = f"#{rank}"
+                color = "#ff1744" if rank <= 10 else "#ff9100"
+                status = "🔥 極度狂熱 (逃頂區)" if rank <= 10 else "📈 散戶進場中"
+            else:
+                # 總榜抓不到時，顯示類別排名作為參考
+                overall_text = "100名外 (冷清)"
+                color = "#00e5ff"
+                status = "😴 市場冷靜 (定投區)"
+
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown(f"""
+                <div class="metric-card" style="border-top: 4px solid {color};">
+                    <div class="metric-label">App Store 總榜 (Overall)</div>
+                    <div class="metric-value" style="color: {color} !important;">{overall_text}</div>
+                </div>""", unsafe_allow_html=True)
+            
+            with c2:
+                f_rank_val = f"#{finance_rank}" if finance_rank else "未入榜"
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-label">財務類別精確排名 (Finance)</div>
+                    <div class="metric-value" style="color: #ffffff !important;">{f_rank_val}</div>
+                </div>""", unsafe_allow_html=True)
+
+            # 顯示列表
+            st.divider()
+            st.markdown(f"#### 🏆 美國區總榜 Top 100 (判定：{status})")
+            with st.container(height=600):
+                for i, name in enumerate(top_100):
+                    is_crypto = any(x in name.lower() for x in ["coinbase", "binance", "crypto.com", "kraken"])
+                    is_ai = any(x in name.lower() for x in ["chatgpt", "gemini", "ai ", "grok"])
+                    
+                    marker, l_color = ("💰", "#ff1744") if is_crypto else (("🤖", "#00FFC2") if is_ai else ("📱", "gray"))
+                    st.markdown(f"**{i+1}.** {marker} <span style='color:{l_color};'>{name}</span>", unsafe_allow_html=True)
+        else:
+            st.error("無法獲取數據，請確認 API 限制。")
+
 
 if __name__ == "__main__":
     main()
