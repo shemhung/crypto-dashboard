@@ -1836,12 +1836,27 @@ def get_global_liquidity_chart(lookback_years=5):
         }
         
         try:
-            # 【核心修正】：棄用 pandas_datareader，直接透過 FRED 的開源 CSV API 獲取
+            # 【核心修正】：棄用 pandas_datareader，改用 requests + 偽裝標頭
+            import requests
+            import io
+            
+            # 戴上假面具，假裝我們是正常的 Chrome 瀏覽器
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+            
             dfs = []
             for ticker, name in tickers.items():
                 url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={ticker}"
+                
+                # 發送請求獲取資料
+                resp = requests.get(url, headers=headers, timeout=10)
+                
+                if resp.status_code != 200:
+                    raise Exception(f"被擋下了，HTTP 狀態碼: {resp.status_code}")
+                    
                 # FRED 的 CSV 遇到假日無資料時會填入 '.'，利用 na_values 轉成 NaN
-                temp_df = pd.read_csv(url, index_col='DATE', parse_dates=True, na_values='.')
+                temp_df = pd.read_csv(io.StringIO(resp.text), index_col='DATE', parse_dates=True, na_values='.')
                 temp_df.rename(columns={ticker: name}, inplace=True)
                 dfs.append(temp_df)
             
