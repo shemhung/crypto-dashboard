@@ -1815,8 +1815,12 @@ def get_copper_gold_ratio_chart(lookback_years=10):
 # 宏觀指標：Fed Net Liquidity (真實數據 + 單位修正版)
 # ============================================================
 def get_global_liquidity_chart(lookback_years=5):
-    import pandas_datareader.data as web
+    import pandas as pd
     import yfinance as yf
+    from datetime import datetime, timedelta
+    import numpy as np
+    import plotly.graph_objects as go
+    import streamlit as st
     
     start_date = datetime.now() - timedelta(days=lookback_years*365)
     
@@ -1832,31 +1836,48 @@ def get_global_liquidity_chart(lookback_years=5):
         }
         
         try:
-            df_fred = web.DataReader(list(tickers.keys()), 'fred', start_date)
+            # 【核心修正】：棄用 pandas_datareader，直接透過 FRED 的開源 CSV API 獲取
+            dfs = []
+            for ticker, name in tickers.items():
+                url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={ticker}"
+                # FRED 的 CSV 遇到假日無資料時會填入 '.'，利用 na_values 轉成 NaN
+                temp_df = pd.read_csv(url, index_col='DATE', parse_dates=True, na_values='.')
+                temp_df.rename(columns={ticker: name}, inplace=True)
+                dfs.append(temp_df)
+            
+            # 合併數據並篩選日期
+            df_fred = dfs[0].join(dfs[1:], how='outer').sort_index()
+            # 確保索引具有時區意識以便後續合併
+            df_fred.index = pd.to_datetime(df_fred.index)
+            df_fred = df_fred[df_fred.index >= start_date]
+            
         except Exception as e:
             st.error(f"連線 FRED 失敗: {e}")
             return go.Figure(), 0
             
-        df_fred = df_fred.rename(columns=tickers)
-        
         # -------------------------------------------------------
         # 【關鍵修正】單位統一：全部轉為 Billions (十億美元)
         # -------------------------------------------------------
         # Fed Assets 原始數據通常是 Millions，所以要除以 1000
         # 判斷邏輯：如果數值大於 10,000，代表它是 Millions，需要轉換
-        if df_fred['Assets'].iloc[-1] > 10000:
+        # 注意：此處需用 .dropna() 防止 NaN 影響判斷
+        valid_assets = df_fred['Assets'].dropna()
+        if not valid_assets.empty and valid_assets.iloc[-1] > 10000:
             df_fred['Assets'] = df_fred['Assets'] / 1000
             
-        # TGA 和 RRP 通常已經是 Billions，但為了保險也檢查一下
-        # (通常不需要除，但如果 FRED 改格式，這行能防呆)
-        if df_fred['TGA'].iloc[-1] > 10000: df_fred['TGA'] /= 1000
-        if df_fred['RRP'].iloc[-1] > 10000: df_fred['RRP'] /= 1000
+        valid_tga = df_fred['TGA'].dropna()
+        if not valid_tga.empty and valid_tga.iloc[-1] > 10000: 
+            df_fred['TGA'] /= 1000
+            
+        valid_rrp = df_fred['RRP'].dropna()
+        if not valid_rrp.empty and valid_rrp.iloc[-1] > 10000: 
+            df_fred['RRP'] /= 1000
             
         # -------------------------------------------------------
         
         # 頻率對齊：將週數據平滑為日數據
         df_fred = df_fred.resample('D').mean().interpolate(method='linear')
-        df_fred = df_fred.fillna(method='ffill').dropna()
+        df_fred = df_fred.ffill().dropna()
         
         # 計算淨流動性 (Billions)
         df_fred['Net_Liquidity'] = df_fred['Assets'] - df_fred['TGA'] - df_fred['RRP']
@@ -1909,7 +1930,6 @@ def get_global_liquidity_chart(lookback_years=5):
         
         # 確保數值正常 (避免顯示 0 或 NaN)
         if pd.isna(curr_liq) or curr_liq < 0:
-             # 如果還是負的，嘗試不減 RRP 看看 (有時候數據源會有問題)
              curr_liq = df_combined['Net_Liquidity'].iloc[-2] 
 
         # 狀態計算
