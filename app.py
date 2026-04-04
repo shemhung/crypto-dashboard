@@ -1994,7 +1994,7 @@ def get_btc_spx_decoupling_chart(df_btc, lookback_years=8, window=90):
     # [新增這段代碼]：計算「當前」連續脫鉤天數
     current_streak_count = 0
     # 從最後一筆資料往回數，直到遇到第一個「未脫鉤」為止
-    for val in reversed(df_macro['is_decoupled']):
+    for val in df_macro['is_decoupled'].iloc[::-1]:
         if val:
             current_streak_count += 1
         else:
