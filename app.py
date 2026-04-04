@@ -1337,103 +1337,6 @@ def get_power_law_chart(df, use_log=True):
     
     return fig
 
-# ============================================================
-# AHR999 囤幣指標 (改良版 - 基於 Power Law)
-# ============================================================
-def get_ahr999_chart(df):
-    df_ahr = df.copy()
-    
-    # 1. 準備 Power Law Fair Value (作為長期價值錨點)
-    genesis_date = pd.to_datetime("2009-01-03")
-    df_ahr['days_since_genesis'] = (df_ahr['open_time'] - genesis_date).dt.days
-    df_ahr = df_ahr[df_ahr['days_since_genesis'] > 0]
-    
-    # Power Law Fair Value
-    df_ahr['fair_value'] = 10**-17 * (df_ahr['days_since_genesis'] ** 5.8)
-    
-    # 2. 計算 200日 幾何平均 (Geometric Mean)
-    # 幾何平均 = exp( mean( log(price) ) )
-    df_ahr['log_price'] = np.log(df_ahr['close'])
-    df_ahr['200_geo_mean'] = np.exp(df_ahr['log_price'].rolling(window=200).mean())
-    
-    # 3. 計算 AHR999
-    # 原始公式: (Price / 200日幾何平均) * (Price / 指數增長預估)
-    # 這裡我們用 Power Law Fair Value 代替 "指數增長預估"，效果更穩
-    df_ahr['ahr999'] = (df_ahr['close'] / df_ahr['200_geo_mean']) * (df_ahr['close'] / df_ahr['fair_value'])
-    
-    # 取 2017 之後數據繪圖
-    plot_data = df_ahr[df_ahr['open_time'] >= "2017-08-17"].copy()
-
-    # 4. 繪圖
-    fig = go.Figure()
-
-    # (A) 繪製 AHR999 線
-    fig.add_trace(go.Scatter(
-        x=plot_data['open_time'], y=plot_data['ahr999'],
-        mode='lines', name='AHR999 Index',
-        line=dict(color='#ffffff', width=2)
-    ))
-
-    # (B) 繪製區間 (使用形狀填充)
-    # 抄底區 (< 0.45) - 綠色
-    fig.add_hrect(
-        y0=0, y1=0.45, 
-        fillcolor="#00e676", opacity=0.15, 
-        layer="below", line_width=0,
-        annotation_text="抄底區 (Buy The Dip)", annotation_position="top left"
-    )
-    
-    # 定投區 (0.45 - 1.2) - 藍色
-    fig.add_hrect(
-        y0=0.45, y1=1.2, 
-        fillcolor="#2979ff", opacity=0.1, 
-        layer="below", line_width=0,
-        annotation_text="定投區 (DCA Zone)", annotation_position="top left"
-    )
-    
-    # 起飛/賣出區 (> 1.2) - 紅色
-    fig.add_hrect(
-        y0=1.2, y1=100, 
-        fillcolor="#ff1744", opacity=0.1, 
-        layer="below", line_width=0,
-        annotation_text="起飛/泡沫區 (Hold/Sell)", annotation_position="bottom left"
-    )
-
-    # 關鍵線
-    fig.add_hline(y=0.45, line_dash="dash", line_color="#00e676", line_width=1)
-    fig.add_hline(y=1.2, line_dash="dash", line_color="#ff1744", line_width=1)
-
-    # 當前狀態標註
-    curr_ahr = plot_data.iloc[-1]['ahr999']
-    if curr_ahr < 0.45:
-        status = "💎 抄底區 (Bottom)"
-        color = "#00e676"
-    elif curr_ahr < 1.2:
-        status = "👌 定投區 (DCA)"
-        color = "#2979ff"
-    else:
-        status = "🚀 起飛區 (Top)"
-        color = "#ff1744"
-
-    fig.add_annotation(
-        xref="paper", yref="paper",
-        x=0.95, y=0.95,
-        text=f"<b>Current AHR999: {curr_ahr:.3f}</b><br>{status}",
-        showarrow=False,
-        bgcolor="rgba(0,0,0,0.8)", bordercolor=color, borderwidth=2,
-        font=dict(size=14, color=color)
-    )
-
-    fig.update_layout(
-        title="AHR999 Hoarding Index (囤幣指標)",
-        template="plotly_dark",
-        height=500,
-        hovermode='x unified',
-        yaxis=dict(title="Index Value", type='log', range=[-1, 2]), # AHR 用 Log 看比較清楚
-        showlegend=False
-    )
-    
-    return fig, curr_ahr# ============================================================
 # AHR999 囤幣指標 (改良版 - 基於 Power Law) - 顯示全歷史修正版
 # ============================================================
 def get_ahr999_chart(df):
@@ -1527,6 +1430,162 @@ def get_ahr999_chart(df):
     )
     
     return fig, curr_ahr
+
+# ============================================================
+# 宏觀指標：2月線 Stoch RSI (雙月隨機相對強弱指數) - 完美標註版
+# ============================================================
+def get_2m_stoch_rsi_chart(df, rsi_period=14, stoch_period=14, k_period=3, d_period=3):
+    import pandas as pd
+    import numpy as np
+    import plotly.graph_objects as go
+    
+    df_2m = df.copy()
+    
+    # 1. 轉換為 2 個月 (2ME) 週期 K 線
+    df_2m['open_time'] = pd.to_datetime(df_2m['open_time'])
+    df_2m = df_2m.set_index('open_time')
+    # 依照你的 pandas 版本，若 '2ME' 報錯可改為 '2M'
+    df_2m = df_2m.resample('2ME').agg({
+        'open': 'first',
+        'high': 'max',
+        'low': 'min',
+        'close': 'last'
+    }).dropna()
+    
+    # 2. 計算 RSI (使用 Wilder's Smoothing)
+    delta = df_2m['close'].diff()
+    gain = delta.where(delta > 0, 0.0)
+    loss = -delta.where(delta < 0, 0.0)
+    avg_gain = gain.ewm(alpha=1/rsi_period, min_periods=rsi_period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1/rsi_period, min_periods=rsi_period, adjust=False).mean()
+    rs = avg_gain / avg_loss
+    df_2m['rsi'] = 100 - (100 / (1 + rs))
+    
+    # 3. 計算 Stoch RSI
+    min_rsi = df_2m['rsi'].rolling(window=stoch_period).min()
+    max_rsi = df_2m['rsi'].rolling(window=stoch_period).max()
+    df_2m['stoch_rsi'] = 100 * (df_2m['rsi'] - min_rsi) / (max_rsi - min_rsi)
+    
+    # 4. 平滑處理 (K 與 D)
+    df_2m['K'] = df_2m['stoch_rsi'].rolling(window=k_period).mean()
+    df_2m['D'] = df_2m['K'].rolling(window=d_period).mean()
+    
+    df_2m = df_2m.reset_index()
+    
+    # 取 2014 之後的數據以利圖表呈現
+    plot_data = df_2m[df_2m['open_time'] >= "2014-01-01"].copy()
+
+    # 5. 偵測黃金交叉與死亡交叉
+    # 買點：在超賣區 (<30) 金叉
+    cross_buy = (plot_data['K'] > plot_data['D']) & \
+                (plot_data['K'].shift(1) <= plot_data['D'].shift(1)) & \
+                (plot_data['D'] < 30)
+                
+    # 賣點：在超買區 (>70) 死叉
+    cross_sell = (plot_data['K'] < plot_data['D']) & \
+                 (plot_data['K'].shift(1) >= plot_data['D'].shift(1)) & \
+                 (plot_data['D'] > 70)
+
+    # 6. 繪圖
+    from plotly.subplots import make_subplots
+    fig = make_subplots(
+        rows=2, cols=1, 
+        shared_xaxes=True, 
+        vertical_spacing=0.05,
+        row_heights=[0.6, 0.4], 
+        subplot_titles=("BTC Price (雙月 K 線)", "2-Month Stoch RSI")
+    )
+
+    # --- 上圖: BTC 雙月價格 ---
+    fig.add_trace(go.Scatter(
+        x=plot_data['open_time'], y=plot_data['close'],
+        mode='lines', name='Price',
+        line=dict(color='#F7931A', width=2)
+    ), row=1, col=1)
+
+    # 標記大底 (金叉 < 30) 附帶文字與垂直線
+    if cross_buy.any():
+        buy_pts = plot_data[cross_buy]
+        fig.add_trace(go.Scatter(
+            x=buy_pts['open_time'], 
+            y=buy_pts['close'] * 0.8,
+            mode='markers+text',
+            name='大底金叉 (<30)',
+            marker=dict(symbol='triangle-up', size=18, color='#00e676', line=dict(width=2, color='white')),
+            text=["⭐大底金叉"] * len(buy_pts),
+            textposition="bottom center",
+            textfont=dict(color='#00e676', size=14, weight='bold')
+        ), row=1, col=1)
+        
+        for date in buy_pts['open_time']:
+            fig.add_vline(x=date, line_width=1, line_dash="dash", line_color="rgba(0, 230, 118, 0.5)")
+
+    # 標記大頂 (死叉 > 70) 附帶文字與垂直線
+    if cross_sell.any():
+        sell_pts = plot_data[cross_sell]
+        fig.add_trace(go.Scatter(
+            x=sell_pts['open_time'], 
+            y=sell_pts['close'] * 1.2, 
+            mode='markers+text', 
+            name='大頂死叉 (>70)',
+            marker=dict(symbol='triangle-down', size=18, color='#ff1744', line=dict(width=2, color='white')),
+            text=["💀大頂死叉"] * len(sell_pts),
+            textposition="top center",
+            textfont=dict(color='#ff1744', size=14, weight='bold')
+        ), row=1, col=1)
+        
+        for date in sell_pts['open_time']:
+            fig.add_vline(x=date, line_width=1, line_dash="dash", line_color="rgba(255, 23, 68, 0.5)")
+
+    # --- 下圖: Stoch RSI ---
+    fig.add_trace(go.Scatter(
+        x=plot_data['open_time'], y=plot_data['K'],
+        mode='lines', name='%K (快線)',
+        line=dict(color='#00e5ff', width=2)
+    ), row=2, col=1)
+    
+    fig.add_trace(go.Scatter(
+        x=plot_data['open_time'], y=plot_data['D'],
+        mode='lines', name='%D (慢線)',
+        line=dict(color='#ff9100', width=2, dash='dot')
+    ), row=2, col=1)
+
+    # 背景區間標示
+    fig.add_hrect(y0=0, y1=30, fillcolor="#00e676", opacity=0.15, line_width=0, row=2, col=1, annotation_text="歷史築底區 (<30)", annotation_position="top left")
+    fig.add_hrect(y0=70, y1=100, fillcolor="#ff1744", opacity=0.15, line_width=0, row=2, col=1, annotation_text="歷史逃頂區 (>70)", annotation_position="bottom left")
+    fig.add_hline(y=30, line_dash="dash", line_color="#00e676", row=2, col=1)
+    fig.add_hline(y=70, line_dash="dash", line_color="#ff1744", row=2, col=1)
+
+    # 當前狀態
+    curr_k = plot_data.iloc[-1]['K']
+    curr_d = plot_data.iloc[-1]['D']
+    
+    if curr_k < 30 or curr_d < 30:
+        status = "💎 指標已進入超賣區 (歷史大底醞釀中)"
+        color = "#00e676"
+    elif curr_k > 70 or curr_d > 70:
+        status = "🔥 指標已進入超買區 (風險極高)"
+        color = "#ff1744"
+    else:
+        status = "⚖️ 中性區間 (趨勢延續中)"
+        color = "#ffffff"
+
+    fig.add_annotation(
+        xref="paper", yref="paper", x=0.02, y=0.95,
+        text=f"<b>Stoch RSI %K: {curr_k:.1f}</b><br><span style='color:{color}'>{status}</span>",
+        showarrow=False, bgcolor="rgba(0,0,0,0.8)", bordercolor=color, borderwidth=1,
+        font=dict(size=14, color="white"), align="left"
+    )
+
+    fig.update_layout(
+        template="plotly_dark", height=650, hovermode='x unified',
+        yaxis=dict(title="Price (Log)", type='log'),
+        yaxis2=dict(title="Stoch RSI (0-100)", range=[-5, 105]),
+        legend=dict(orientation="h", y=1.02)
+    )
+    
+    return fig, curr_k, curr_d
+
 # ============================================================
 # MFI 資金流量 (Smart Money Flow) - 修復價格顯示
 # ============================================================
@@ -4340,7 +4399,7 @@ def main():
     # ------------------------------------------------------------
     # Tab 3: 宏觀週期指標 (包含原本的 Tab 7, 8, 9)
     # ------------------------------------------------------------
-        macro_sub_tabs = st.tabs(["👑 週期", "🌊 梅耶倍數", "📐 冪律法則", "💎 囤幣指標", "🏭 銅金比", "🌊 全球流動性", "🔗 SPX 脫鉤分析"])
+        macro_sub_tabs = st.tabs(["👑 週期", "🌊 梅耶倍數", "📐 冪律法則", "💎 囤幣指標", "🏭 銅金比", "🌊 全球流動性", "🔗 SPX 脫鉤分析", "📉 2M StochRSI"])
         
         # [子分頁 1] 週期大師
         with macro_sub_tabs[0]:
@@ -4491,7 +4550,36 @@ def main():
                 st.plotly_chart(fig_spx, use_container_width=True)
             else:
                 st.error("無法加載標普 500 數據，請稍後再試。")
-
+        # [子分頁 8] 雙月線 Stoch RSI 
+        with macro_sub_tabs[7]:
+            st.subheader("📉 雙月線 Stoch RSI (宏觀頂底雷達)")
+            st.markdown("""
+            **「當你拉長週期，雜訊就會消失。」**
+            透過將 K 線週期拉長至 2 個月，我們能避開中短期的插針與洗盤。
+            - **🟢 歷史大底 (Buy)**：指標進入綠色超賣區 (<30) 後，快線向上穿越慢線形成**黃金交叉**。
+            - **🔴 歷史大頂 (Sell)**：指標進入紅色超買區 (>70) 後，快線向下穿越慢線形成**死亡交叉**。
+            """)
+            
+            with st.spinner("正在計算 2M Stoch RSI 宏觀級別..."):
+                fig_stoch, k_val, d_val = get_2m_stoch_rsi_chart(df)
+            
+            # 建立儀表板
+            c1, c2, c3 = st.columns(3)
+            c1.metric("當前 %K 線 (快線)", f"{k_val:.1f}")
+            c2.metric("當前 %D 線 (慢線)", f"{d_val:.1f}")
+            
+            if k_val < 30:
+                s_text = "超賣區 (大底醞釀)"
+                s_color = "normal"
+            elif k_val > 70:
+                s_text = "超買區 (大頂風險)"
+                s_color = "inverse"
+            else:
+                s_text = "中性區間"
+                s_color = "off"
+            c3.metric("宏觀位階", s_text, delta_color=s_color)
+            
+            st.plotly_chart(fig_stoch, use_container_width=True)
     elif menu == "🔭 空間視覺":
     # ------------------------------------------------------------
     # Tab 4: 3D 視覺化 (包含原本的 Tab 4)
