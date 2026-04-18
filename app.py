@@ -142,8 +142,8 @@ def fetch_binance_klines(symbol="BTCUSDT", interval="1d", start_date="2017-08-17
         params = {"symbol": symbol, "interval": interval, "startTime": current_start, "limit": 1000}
         try:
             # 加入 proxies 參數
-            resp = requests.get(url, params=params, headers=headers, timeout=10)
-            #proxies=working_proxy
+            resp = requests.get(url, params=params, headers=headers, proxies=working_proxy, timeout=10)
+            
             # 如果被擋 (403/451)，代表這個 Proxy IP 是美國的，或者被 Ban 了
             if resp.status_code != 200:
                 st.error(f"❌ Proxy 連線被拒 (Code {resp.status_code})。請確認 WebShare IP 地區非美國。")
