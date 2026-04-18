@@ -162,7 +162,7 @@ def fetch_binance_klines(symbol="BTCUSDT", interval="1d", start_date="2017-08-17
             current_start = data[-1][6] + 1
             
             # 稍微休息，避免太快把 WebShare 的流量用完或觸發 Binance 限制
-            time.sleep(0.1) 
+            time.sleep(0.6) 
             
         except Exception as e:
             print(f"❌ 傳輸中斷: {e}")
