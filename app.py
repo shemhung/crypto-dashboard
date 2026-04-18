@@ -146,8 +146,18 @@ def fetch_binance_klines(symbol="BTCUSDT", interval="1d", start_date="2017-08-17
             
             # 如果被擋 (403/451)，代表這個 Proxy IP 是美國的，或者被 Ban 了
             if resp.status_code != 200:
-                st.error(f"❌ Proxy 連線被拒 (Code {resp.status_code})。請確認 WebShare IP 地區非美國。")
-                print(f"❌ API Error: {resp.status_code} - {resp.text}")
+                # 抓取 Retry-After 標頭
+                retry_after = resp.headers.get('Retry-After')
+                
+                if retry_after:
+                    st.error(f"❌ IP 已被幣安封鎖！請等待 {retry_after} 秒（約 {int(retry_after)/60:.1f} 分鐘）後再試。")
+                    print(f"🔒 封禁倒數: {retry_after} 秒")
+                else:
+                    st.error(f"❌ 連線被拒 (HTTP {resp.status_code})。地區可能遭封鎖。")
+                
+                print(f"❌ 完整 Error: {resp.status_code} - {resp.text}")
+                # 印出所有標頭讓你看看幣安傳了什麼回來
+                print(f"🗂️ 伺服器標頭: {resp.headers}") 
                 break
 
             data = resp.json()
