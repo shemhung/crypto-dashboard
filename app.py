@@ -3783,16 +3783,10 @@ def main():
         
         # 系統管理按鈕區 (改為更簡潔的佈局)
         st.markdown("### ⚙️ 數據管理")
-        if st.button("🔄 立即同步最新數據", use_container_width=True):
+        if st.button("🔄 重新整理", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
-        if st.button("測試 Supabase 連線", use_container_width=True):
-            try:
-                result = test_connection()
-                st.success(f"Supabase 連線成功：{result.current_time}")
-            except Exception as e:
-                st.error(f"Supabase 連線失敗：{e}")
-        if st.button("同步 Binance 到 Supabase", use_container_width=True):
+        if st.button("寫入最新數據", use_container_width=True):
             try:
                 df_binance = fetch_binance_klines(symbol="BTCUSDT")
 
