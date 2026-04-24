@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+from db import test_connection, save_market_price, read_market_price, write_sync_log
 import streamlit as st
 import sys
 import io
@@ -3781,7 +3782,12 @@ def main():
         if st.button("🔄 立即同步最新數據", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
-
+        if st.button("測試 Supabase 連線", use_container_width=True):
+            try:
+                result = test_connection()
+                st.success(f"Supabase 連線成功：{result.current_time}")
+            except Exception as e:
+                st.error(f"Supabase 連線失敗：{e}")
         # with st.expander("📥 數據回填工具", expanded=False):
         #     c1, c2 = st.columns(2)
         #     c1.button("📺 YT", key="yt_btn", use_container_width=True)
