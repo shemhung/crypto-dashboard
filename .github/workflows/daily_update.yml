@@ -21,7 +21,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install gspread oauth2client pandas requests numpy
+          pip install -r requirements.txt
 
       # 執行 Wiki 更新 (讀取環境變數)
       - name: Run Wiki Backfill
