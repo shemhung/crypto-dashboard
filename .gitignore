@@ -1,2 +1,9 @@
 .env
 .streamlit/secrets.toml
+service_account.json
+
+__pycache__/
+*.pyc
+cache_data/
+
+*.html
