@@ -2261,29 +2261,92 @@ def compute_risk(df, df_blockchain_com=None, df_coinglass=None, df_obituaries=No
         social_risk_components.append(('fear_greed', fg_risk, FEAR_GREED_WEIGHT))
 
     if df_youtube_activity is not None and not df_youtube_activity.empty:
-        df_youtube_activity['date'] = pd.to_datetime(df_youtube_activity['date'])
-        df_youtube_activity = df_youtube_activity.sort_values('date')
-        
-        videos_norm = (df_youtube_activity['video_count'] - df_youtube_activity['video_count'].min()) / \
-                      (df_youtube_activity['video_count'].max() - df_youtube_activity['video_count'].min() + 1)
-        log_views = np.log10(df_youtube_activity['avg_views'] + 1)
-        views_norm = (log_views - log_views.min()) / (log_views.max() - log_views.min() + 0.001)
-        heat_norm = df_youtube_activity['high_view_ratio']
-        
-        df_youtube_activity['composite_score'] = 0.3 * videos_norm + 0.4 * views_norm + 0.3 * heat_norm
-        
-        temp_df = df[['open_time']].copy()
-        temp_df['date'] = temp_df['open_time']
-        merged_yt = pd.merge_asof(temp_df, df_youtube_activity[['date', 'composite_score']], 
-                                  on='date', direction='backward')
-        
-        df['youtube_val'] = merged_yt['composite_score'].values
-        df['youtube_val'] = df['youtube_val'].ffill().bfill().fillna(0)
-        
-        yt_risk = df['youtube_val'].rank(pct=True).rolling(7, min_periods=1).mean().clip(0, 1)
-        social_risk_components.append(('youtube', yt_risk, YOUTUBE_WEIGHT))
+        df_youtube_activity = df_youtube_activity.copy()
+
+        # 日期統一成 datetime64[ns]
+        df_youtube_activity["date"] = pd.to_datetime(
+            df_youtube_activity["date"],
+            errors="coerce"
+        ).dt.tz_localize(None).astype("datetime64[ns]")
+
+        df_youtube_activity = (
+            df_youtube_activity
+            .dropna(subset=["date"])
+            .sort_values("date")
+            .reset_index(drop=True)
+        )
+
+        # 數值欄位防呆
+        for col in ["video_count", "avg_views", "high_view_ratio"]:
+            if col not in df_youtube_activity.columns:
+                df_youtube_activity[col] = 0
+            df_youtube_activity[col] = pd.to_numeric(
+                df_youtube_activity[col],
+                errors="coerce"
+            ).fillna(0)
+
+        videos_norm = (
+            (df_youtube_activity["video_count"] - df_youtube_activity["video_count"].min()) /
+            (df_youtube_activity["video_count"].max() - df_youtube_activity["video_count"].min() + 1)
+        )
+
+        log_views = np.log10(df_youtube_activity["avg_views"] + 1)
+        views_norm = (
+            (log_views - log_views.min()) /
+            (log_views.max() - log_views.min() + 0.001)
+        )
+
+        heat_norm = df_youtube_activity["high_view_ratio"]
+
+        df_youtube_activity["composite_score"] = (
+            0.3 * videos_norm +
+            0.4 * views_norm +
+            0.3 * heat_norm
+        )
+
+        temp_df = df[["open_time"]].copy()
+
+        temp_df["date"] = pd.to_datetime(
+            temp_df["open_time"],
+            errors="coerce"
+        ).dt.tz_localize(None).astype("datetime64[ns]")
+
+        temp_df = (
+            temp_df
+            .dropna(subset=["date"])
+            .sort_values("date")
+            .reset_index(drop=True)
+        )
+
+        yt_for_merge = (
+            df_youtube_activity[["date", "composite_score"]]
+            .dropna(subset=["date"])
+            .sort_values("date")
+            .reset_index(drop=True)
+        )
+
+        merged_yt = pd.merge_asof(
+            temp_df,
+            yt_for_merge,
+            on="date",
+            direction="backward"
+        )
+
+        df["youtube_val"] = merged_yt["composite_score"].values
+        df["youtube_val"] = df["youtube_val"].ffill().bfill().fillna(0)
+
+        yt_risk = (
+            df["youtube_val"]
+            .rank(pct=True)
+            .rolling(7, min_periods=1)
+            .mean()
+            .clip(0, 1)
+        )
+
+        social_risk_components.append(("youtube", yt_risk, YOUTUBE_WEIGHT))
+
     else:
-        df['youtube_val'] = 0
+        df["youtube_val"] = 0
 
     if 'wiki_views' in df.columns and not df['wiki_views'].isna().all():
         wiki_val = df['wiki_views'].copy()
