@@ -81,12 +81,15 @@ def write_sync_log(source_name, status, rows_inserted=0, error_message=None, lat
             (:source_name, :status, :rows_inserted, :error_message, :latency_ms)
     """)
 
-    engine = get_engine()
-    with engine.begin() as conn:
-        conn.execute(sql, {
-            "source_name": source_name,
-            "status": status,
-            "rows_inserted": rows_inserted,
-            "error_message": error_message,
-            "latency_ms": latency_ms,
-        })
+    try:
+        engine = get_engine()
+        with engine.begin() as conn:
+            conn.execute(sql, {
+                "source_name": source_name,
+                "status": status,
+                "rows_inserted": rows_inserted,
+                "error_message": error_message,
+                "latency_ms": latency_ms,
+            })
+    except Exception as e:
+        print(f"⚠️ 寫入 data_sync_log 失敗：{e}")
