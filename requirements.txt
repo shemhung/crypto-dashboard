@@ -10,3 +10,6 @@ yfinance
 scikit-learn
 pandas-datareader
 setuptools
+sqlalchemy
+psycopg2-binary
+python-dotenv
