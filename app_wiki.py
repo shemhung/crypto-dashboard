@@ -1,179 +1,147 @@
 # -*- coding: utf-8 -*-
+import os
+import time
 import requests
 import pandas as pd
 from datetime import datetime, timedelta
-import time
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-import os
-import json
-import sys
+from sqlalchemy import create_engine, text
 
-# ==========================================
-# 1. 設定區
-# ==========================================
-# Google Sheet 網址 (請確認網址正確)
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1eDMd7hOd5CCj6TpDvMSGiA5YsEASZ3he9cX9sKaB18g"
 
-# 本地金鑰檔案名稱
-JSON_KEYFILE = 'service_account.json'
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
-# ==========================================
-# 2. 連線 Google Sheets (支援 本地/GitHub 雙模式)
-# ==========================================
-def connect_gsheet():
-    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-    
-    # 判斷是否在 GitHub Actions 環境
-    if "GCP_SERVICE_ACCOUNT_JSON" in os.environ:
-        print("🤖 檢測到雲端環境，使用環境變數憑證...")
-        try:
-            creds_dict = json.loads(os.environ["GCP_SERVICE_ACCOUNT_JSON"])
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-        except Exception as e:
-            print(f"❌ 環境變數憑證解析失敗: {e}")
-            return None
-    else:
-        print("💻 檢測到本地環境，使用 service_account.json...")
-        try:
-            creds = ServiceAccountCredentials.from_json_keyfile_name(JSON_KEYFILE, scope)
-        except Exception as e:
-            print(f"❌ 找不到本地憑證檔案: {e}")
-            return None
+if not DATABASE_URL:
+    raise RuntimeError("Missing DATABASE_URL environment variable")
 
-    client = gspread.authorize(creds)
-    sh = client.open_by_url(SHEET_URL)
-    return sh
 
-# ==========================================
-# 3. 抓取 Wiki 數據主邏輯
-# ==========================================
-def fetch_wiki_history():
-    print("=" * 60)
-    print("📚 開始回填 Wikipedia (Bitcoin) -> Google Sheets")
-    print("=" * 60)
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 
-    # 1. 連線 Google Sheet
-    try:
-        sh = connect_gsheet()
-        if not sh: return
 
-        # 嘗試開啟 wiki_data 分頁，沒有就建立
-        try:
-            ws = sh.worksheet("wiki_data")
-        except:
-            print("⚠️ 找不到 'wiki_data' 分頁，正在建立...")
-            ws = sh.add_worksheet(title="wiki_data", rows="1000", cols="5")
+def get_latest_wiki_date():
+    sql = text("SELECT MAX(metric_date) FROM wiki_metric")
 
-        existing_data = ws.get_all_records()
-        existing_df = pd.DataFrame(existing_data)
-        
-        # 決定開始日期
-        if not existing_df.empty and 'date_wiki' in existing_df.columns:
-            # 確保轉成 datetime
-            existing_df['date_wiki'] = pd.to_datetime(existing_df['date_wiki'])
-            last_date = existing_df['date_wiki'].max()
-            start_date = last_date + timedelta(days=1)
-            print(f"✓ 讀取到 {len(existing_df)} 筆數據，最後日期: {last_date.date()}")
-            print(f"  接續從 {start_date.date()} 開始抓取...")
-        else:
-            print("ℹ️  Sheet 為空或無有效數據，執行全量抓取 (從 2015 年開始)...")
-            start_date = datetime(2015, 7, 1)
-            existing_df = pd.DataFrame()
-            
-    except Exception as e:
-        print(f"❌ Google Sheet 連線失敗: {e}")
-        return
+    with engine.connect() as conn:
+        result = conn.execute(sql).scalar()
 
-    end_date = datetime.now()
-    
-    # 如果已經是最新的，就不跑了
-    if start_date >= end_date:
-        print("✅ 數據已是最新，無需更新。")
-        return
+    return result
 
+
+def fetch_wiki_range(start_date, end_date):
     headers = {
-        'User-Agent': 'BitcoinRiskBot/1.0 (Personal Education Project)'
+        "User-Agent": "BitcoinRiskBot/1.0 (Personal Education Project)"
     }
 
-    all_new_data = []
-    
-    # 2. 分段抓取 (每次一年)
+    all_rows = []
     fetch_ptr = start_date
-    
-    while fetch_ptr < end_date:
-        chunk_end = fetch_ptr + timedelta(days=365)
-        if chunk_end > end_date:
-            chunk_end = end_date
-        
-        start_str = fetch_ptr.strftime('%Y%m%d')
-        end_str = chunk_end.strftime('%Y%m%d')
-        
-        print(f"  抓取區間: {start_str} - {end_str} ... ", end="", flush=True)
-        
-        url = f"https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia/all-access/all-agents/Bitcoin/daily/{start_str}/{end_str}"
-        
-        try:
-            resp = requests.get(url, headers=headers, timeout=10)
-            
-            if resp.status_code == 200:
-                data = resp.json()
-                items = data.get('items', [])
-                
-                count = 0
-                for item in items:
-                    raw_date = item['timestamp']
-                    # 轉成 YYYY-MM-DD
-                    date_str = f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:8]}"
-                    views = item['views']
-                    
-                    all_new_data.append({
-                        'date_wiki': date_str,
-                        'wiki_views': views
-                    })
-                    count += 1
-                print(f"✅ ({count} 筆)")
-            else:
-                print(f"❌ HTTP {resp.status_code}")
-                
-        except Exception as e:
-            print(f"❌ 錯誤: {e}")
-            
+
+    while fetch_ptr <= end_date:
+        chunk_end = min(fetch_ptr + timedelta(days=365), end_date)
+
+        start_str = fetch_ptr.strftime("%Y%m%d")
+        end_str = chunk_end.strftime("%Y%m%d")
+
+        print(f"Fetching Wikipedia: {start_str} - {end_str}")
+
+        url = (
+            "https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/"
+            f"en.wikipedia/all-access/all-agents/Bitcoin/daily/{start_str}/{end_str}"
+        )
+
+        resp = requests.get(url, headers=headers, timeout=20)
+
+        if resp.status_code == 200:
+            data = resp.json()
+            for item in data.get("items", []):
+                raw_date = item["timestamp"]
+                metric_date = f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:8]}"
+
+                all_rows.append({
+                    "metric_date": metric_date,
+                    "wiki_views": int(item["views"])
+                })
+        else:
+            print(f"HTTP {resp.status_code}: {resp.text[:200]}")
+
         fetch_ptr = chunk_end + timedelta(days=1)
         time.sleep(0.5)
 
-    # 3. 上傳回 Google Sheet
-    if all_new_data:
-        new_df = pd.DataFrame(all_new_data)
-        
-        # 合併舊資料
-        if not existing_df.empty:
-            # 統一日期格式為字串，方便上傳
-            existing_df['date_wiki'] = existing_df['date_wiki'].dt.strftime('%Y-%m-%d')
-            final_df = pd.concat([existing_df, new_df])
+    return pd.DataFrame(all_rows)
+
+
+def save_wiki_metric(df):
+    if df.empty:
+        return 0
+
+    rows = []
+
+    for _, row in df.iterrows():
+        rows.append({
+            "metric_date": pd.to_datetime(row["metric_date"]).date(),
+            "wiki_views": int(row["wiki_views"]),
+        })
+
+    sql = text("""
+        INSERT INTO wiki_metric
+            (metric_date, wiki_views)
+        VALUES
+            (:metric_date, :wiki_views)
+        ON CONFLICT (metric_date)
+        DO UPDATE SET
+            wiki_views = EXCLUDED.wiki_views
+    """)
+
+    with engine.begin() as conn:
+        conn.execute(sql, rows)
+
+    return len(rows)
+
+
+def write_sync_log(source_name, status, rows_inserted=0, error_message=None):
+    sql = text("""
+        INSERT INTO data_sync_log
+            (source_name, status, rows_inserted, error_message)
+        VALUES
+            (:source_name, :status, :rows_inserted, :error_message)
+    """)
+
+    try:
+        with engine.begin() as conn:
+            conn.execute(sql, {
+                "source_name": source_name,
+                "status": status,
+                "rows_inserted": rows_inserted,
+                "error_message": error_message,
+            })
+    except Exception as e:
+        print(f"Failed to write data_sync_log: {e}")
+
+
+def main():
+    try:
+        latest_date = get_latest_wiki_date()
+
+        if latest_date:
+            start_date = pd.to_datetime(latest_date).to_pydatetime() + timedelta(days=1)
         else:
-            final_df = new_df
-            
-        # 去重與排序
-        final_df = final_df.drop_duplicates(subset=['date_wiki']).sort_values('date_wiki')
-        
-        # 處理 NaN
-        final_df = final_df.fillna(0)
-        
-        print("📤 正在上傳至 Google Sheets...")
-        try:
-            # gspread 需要將 DataFrame 轉為 list of lists，並包含標題
-            data_to_upload = [final_df.columns.values.tolist()] + final_df.values.tolist()
-            
-            ws.clear() # 清空舊的
-            ws.update(data_to_upload) # 寫入新的
-            
-            print(f"🎉 回填完成！總共 {len(final_df)} 筆數據。")
-            
-        except Exception as e:
-            print(f"❌ 上傳失敗: {e}")
-    else:
-        print("⚠️ 本次沒有抓取到新數據。")
+            start_date = datetime(2015, 7, 1)
+
+        end_date = datetime.utcnow()
+
+        if start_date.date() > end_date.date():
+            print("Wikipedia data is already up to date.")
+            write_sync_log("wikipedia", "SUCCESS", rows_inserted=0)
+            return
+
+        df = fetch_wiki_range(start_date, end_date)
+
+        rows = save_wiki_metric(df)
+        write_sync_log("wikipedia", "SUCCESS", rows_inserted=rows)
+
+        print(f"Saved {rows} Wikipedia rows to Supabase.")
+
+    except Exception as e:
+        write_sync_log("wikipedia", "FAILED", error_message=str(e))
+        raise
+
 
 if __name__ == "__main__":
-    fetch_wiki_history()
+    main()
