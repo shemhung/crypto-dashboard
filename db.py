@@ -18,8 +18,142 @@ def test_connection():
     with engine.connect() as conn:
         result = conn.execute(text("SELECT now() AS current_time"))
         return result.fetchone()
+def read_youtube_metric():
+    engine = get_engine()
+    query = """
+        SELECT
+            metric_date AS date,
+            video_count,
+            avg_views,
+            high_view_ratio,
+            composite_score
+        FROM youtube_metric
+        ORDER BY metric_date ASC
+    """
+    return pd.read_sql(query, engine)
 
 
+def save_youtube_metric(df):
+    if df.empty:
+        return 0
+
+    rows = []
+
+    for _, row in df.iterrows():
+        rows.append({
+            "metric_date": pd.to_datetime(row["date"]).date(),
+            "video_count": int(row.get("video_count", 0) or 0),
+            "avg_views": float(row.get("avg_views", 0) or 0),
+            "high_view_ratio": float(row.get("high_view_ratio", 0) or 0),
+            "composite_score": float(row.get("composite_score", 0) or 0),
+        })
+
+    sql = text("""
+        INSERT INTO youtube_metric
+            (metric_date, video_count, avg_views, high_view_ratio, composite_score)
+        VALUES
+            (:metric_date, :video_count, :avg_views, :high_view_ratio, :composite_score)
+        ON CONFLICT (metric_date)
+        DO UPDATE SET
+            video_count = EXCLUDED.video_count,
+            avg_views = EXCLUDED.avg_views,
+            high_view_ratio = EXCLUDED.high_view_ratio,
+            composite_score = EXCLUDED.composite_score
+    """)
+
+    engine = get_engine()
+    with engine.begin() as conn:
+        conn.execute(sql, rows)
+
+    return len(rows)
+def read_wiki_metric():
+    engine = get_engine()
+    query = """
+        SELECT metric_date AS date_wiki, wiki_views
+        FROM wiki_metric
+        ORDER BY metric_date ASC
+    """
+    return pd.read_sql(query, engine)
+
+
+def save_wiki_metric(df):
+    if df.empty:
+        return 0
+
+    rows = []
+
+    for _, row in df.iterrows():
+        rows.append({
+            "metric_date": pd.to_datetime(row["date_wiki"]).date(),
+            "wiki_views": int(row.get("wiki_views", 0) or 0),
+        })
+
+    sql = text("""
+        INSERT INTO wiki_metric
+            (metric_date, wiki_views)
+        VALUES
+            (:metric_date, :wiki_views)
+        ON CONFLICT (metric_date)
+        DO UPDATE SET
+            wiki_views = EXCLUDED.wiki_views
+    """)
+
+    engine = get_engine()
+    with engine.begin() as conn:
+        conn.execute(sql, rows)
+
+    return len(rows)
+def save_risk_score(df, symbol="BTCUSDT"):
+    if df.empty or "total_risk" not in df.columns:
+        return 0
+
+    rows = []
+
+    for _, row in df.iterrows():
+        if pd.isna(row.get("total_risk")):
+            continue
+
+        risk = float(row["total_risk"])
+
+        if risk <= 0.4:
+            level = "BUY"
+        elif risk >= 0.8:
+            level = "SELL"
+        else:
+            level = "HODL"
+
+        rows.append({
+            "symbol": symbol,
+            "score_time": pd.to_datetime(row["open_time"]).to_pydatetime(),
+            "price": float(row["close"]) if not pd.isna(row.get("close")) else None,
+            "total_risk": risk,
+            "price_risk": float(row.get("price_risk", 0) or 0),
+            "social_risk": float(row.get("social_risk", 0) or 0),
+            "risk_level": level,
+        })
+
+    if not rows:
+        return 0
+
+    sql = text("""
+        INSERT INTO risk_score
+            (symbol, score_time, price, total_risk, price_risk, social_risk, risk_level)
+        VALUES
+            (:symbol, :score_time, :price, :total_risk, :price_risk, :social_risk, :risk_level)
+        ON CONFLICT (symbol, score_time)
+        DO UPDATE SET
+            price = EXCLUDED.price,
+            total_risk = EXCLUDED.total_risk,
+            price_risk = EXCLUDED.price_risk,
+            social_risk = EXCLUDED.social_risk,
+            risk_level = EXCLUDED.risk_level
+    """)
+
+    engine = get_engine()
+    with engine.begin() as conn:
+        conn.execute(sql, rows)
+
+    return len(rows)
 def save_market_price(df, symbol="BTCUSDT"):
     if df.empty:
         return 0

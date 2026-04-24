@@ -1,7 +1,17 @@
 # -*- coding: utf-8 -*-
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from db import test_connection, save_market_price, read_market_price, write_sync_log
+from db import (
+    test_connection,
+    save_market_price,
+    save_risk_score,
+    read_market_price,
+    read_wiki_metric,
+    save_wiki_metric,
+    read_youtube_metric,
+    save_youtube_metric,
+    write_sync_log
+)
 import streamlit as st
 import sys
 import io
@@ -2334,165 +2344,62 @@ def compute_risk(df, df_blockchain_com=None, df_coinglass=None, df_obituaries=No
 
 @st.cache_data(ttl=3600)
 def load_data_and_compute():
-    # =========================================================
-    # 0. 建立 Google Sheets 連線
-    # =========================================================
-    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-    
-    # 定義讀取 Sheet 的小幫手 (包含跳過浮水印邏輯)
-    def read_sheet_to_df(client, sheet_url, worksheet_name):
-        try:
-            sh = client.open_by_url(sheet_url)
-            ws = sh.worksheet(worksheet_name)
-            raw_data = ws.get_all_values()
-            
-            if not raw_data:
-                return pd.DataFrame()
+    symbol = "BTCUSDT"
 
-            # 🕵️‍♂️ 邏輯移植：判斷第一列是否為垃圾資訊 (網址/浮水印)
-            if len(raw_data) > 1 and ("http" in str(raw_data[0][0]) or "Crypto" in str(raw_data[0][0])):
-                headers = raw_data[1] # 跳過第一列，用第二列當標題
-                rows = raw_data[2:]
-            else:
-                headers = raw_data[0]
-                rows = raw_data[1:]
-            
-            return pd.DataFrame(rows, columns=headers)
-        except Exception as e:
-            print(f"⚠️ 讀取 {worksheet_name} 失敗: {e}")
-            return pd.DataFrame()
-
-    # 初始化 gspread
+    # =========================================================
+    # 1. 平常載入只從 Supabase 讀取 market_price
+    #    不再每次抓 Binance，也不再每次寫資料庫
+    # =========================================================
     try:
-        # 1. 從 secrets 讀取設定，並轉成 Python 字典
-        # (原本你是讀 service_account.json，現在我們改讀這個字典，內容其實一模一樣)
-        creds_dict = dict(st.secrets["gsheets"])
-        
-        # 2. 【超級關鍵】修正 Private Key 的換行符號
-        # 這行程式碼會自動把 secrets 裡的文字 "\n" 轉成真正的換行，解決 401 錯誤
-        if "private_key" in creds_dict:
-            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
-
-        # 3. 告訴 gspread：請讀這個字典 (from_json_keyfile_dict)
-        # 這樣就不需要 service_account.json 檔案了！
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-        
-        # 4. 建立連線
-        client = gspread.authorize(creds)
-        
-        # 5. 讀取網址
-        sheet_url = st.secrets["gsheets"]["spreadsheet"]
-        
-        print("✅ gspread 連線成功 (使用 Secrets)！")
-        
+        df_history = read_market_price(symbol=symbol)
     except Exception as e:
-        st.error(f"❌ gspread 連線失敗: {e}")
+        st.error(f"❌ 從 Supabase 讀取 market_price 失敗：{e}")
         return pd.DataFrame()
 
-    # =========================================================
-    # 1. 抓取 Binance 數據 (2017-08-17 ~ Now)
-    # =========================================================
-    symbol = "BTCUSDT"
-    df_binance = fetch_binance_klines(symbol=symbol)
-    if not df_binance.empty:
-        # 防止 Binance 數據本身有重複欄位
-        df_binance = df_binance.loc[:, ~df_binance.columns.duplicated()]
+    if df_history.empty:
+        st.error("❌ Supabase 的 market_price 目前沒有資料，請先按「同步 Binance 到 Supabase」。")
+        return pd.DataFrame()
+
+    # Supabase 讀出來可能是 timezone-aware，統一轉成 naive datetime
+    df_history["open_time"] = pd.to_datetime(df_history["open_time"], utc=True).dt.tz_convert(None)
+
+    for c in ["open", "high", "low", "close", "volume"]:
+        if c in df_history.columns:
+            df_history[c] = pd.to_numeric(df_history[c], errors="coerce")
+
+    df_history = (
+        df_history
+        .drop_duplicates(subset=["open_time"])
+        .sort_values("open_time")
+        .reset_index(drop=True)
+    )
 
     # =========================================================
-    # 2. 讀取 Google Sheet 歷史數據 (取代本地 CSV)
+    # 2. YouTube：只讀 Supabase，不寫入
+    #    如果 Supabase 沒資料，才 fallback 到本地 cache
     # =========================================================
-    df_history = pd.DataFrame()
-    
-    # 讀取 price_data 分頁
-    df_raw = read_sheet_to_df(client, sheet_url, "price_data")
-    
-    if not df_raw.empty:
-        try:
-            # --- 以下完全移植您原本的 CSV 清洗邏輯 ---
-            
-            # 1. 清洗欄位名稱 (轉小寫、去空白)
-            df_raw.columns = [str(c).strip().lower() for c in df_raw.columns]
-            
-            # 2. 欄位對應 (Mapping)
-            col_map = {}
-            for col in df_raw.columns:
-                if 'date' in col: col_map[col] = 'open_time'
-                elif 'unix' in col: continue 
-                elif 'close' in col: col_map[col] = 'close'
-                elif 'volume' in col: col_map[col] = 'volume'
-                elif 'open' in col: col_map[col] = 'open'
-                elif 'high' in col: col_map[col] = 'high'
-                elif 'low' in col: col_map[col] = 'low'
+    try:
+        df_yt_sheet = read_youtube_metric()
+    except Exception as e:
+        print(f"⚠️ 讀取 youtube_metric 失敗，改用本地 cache：{e}")
+        df_yt_sheet = pd.DataFrame()
 
-            df_raw = df_raw.rename(columns=col_map)
-            
-            # 3. 【關鍵修復】移除重複的欄位名稱
-            df_raw = df_raw.loc[:, ~df_raw.columns.duplicated()]
-            
-            # 4. 確保必要的欄位存在並處理數據
-            if 'open_time' in df_raw.columns:
-                df_raw['open_time'] = pd.to_datetime(df_raw['open_time'])
-                df_raw = df_raw.sort_values('open_time')
-                
-                # 數值轉換 (Sheet 讀下來是字串，必須轉數字)
-                for c in ['open', 'high', 'low', 'close', 'volume']:
-                    if c in df_raw.columns:
-                        df_raw[c] = pd.to_numeric(df_raw[c], errors='coerce')
+    if df_yt_sheet.empty:
+        df_yt_sheet = load_youtube_activity_history()
 
-                # 只取 Binance 之前的數據
-                df_history = df_raw[df_raw['open_time'] < "2017-08-17"].reset_index(drop=True)
-                
-                # 補齊缺少的 OHLC (如果只有 Close)
-                if 'close' in df_history.columns:
-                    for c in ['open', 'high', 'low']:
-                        if c not in df_history.columns: df_history[c] = df_history['close']
-                
-                # 如果沒有 volume，補 1000
-                if 'volume' not in df_history.columns: 
-                    df_history['volume'] = 1000 
-                
-                # 只保留需要的欄位，進一步淨化
-                required_cols = ['open_time', 'open', 'high', 'low', 'close', 'volume']
-                # 確保欄位都存在才選取
-                existing_cols = [c for c in required_cols if c in df_history.columns]
-                df_history = df_history[existing_cols]
-                
-                print(f"✅ 成功從 Sheet 讀取並清洗歷史數據！共 {len(df_history)} 筆。")
+    if df_yt_sheet is None:
+        df_yt_sheet = pd.DataFrame()
 
-        except Exception as e:
-            print(f"Sheet cleaning logic failed: {e}")
-            pass
-
-    # =========================================================
-    # 3. 讀取 Wiki 和 YT 數據 (從 Sheet)
-    # =========================================================
-    df_wiki_sheet = read_sheet_to_df(client, sheet_url, "wiki_data")
-    if not df_wiki_sheet.empty:
-        df_wiki_sheet.columns = [str(c).strip().lower() for c in df_wiki_sheet.columns]
-        if 'date_wiki' in df_wiki_sheet.columns:
-            df_wiki_sheet['date_wiki'] = pd.to_datetime(df_wiki_sheet['date_wiki'])
-        # Wiki 也是，除了日期以外通通轉數字
-        for col in df_wiki_sheet.columns:
-            if col != 'date_wiki':
-                df_wiki_sheet[col] = pd.to_numeric(df_wiki_sheet[col], errors='coerce').fillna(0)
-
-    # 👇👇👇 重點修改這裡 (地毯式轉型) 👇👇👇
-    df_yt_sheet = read_sheet_to_df(client, sheet_url, "yt_data")
     if not df_yt_sheet.empty:
-        df_yt_sheet.columns = [str(c).strip().lower() for c in df_yt_sheet.columns]
-        
-        # 1. 處理日期
-        if 'date' in df_yt_sheet.columns:
-            df_yt_sheet['date'] = pd.to_datetime(df_yt_sheet['date'])
-        
-        # 2. 【強力修復】不管欄位叫什麼名字，只要不是日期，全部強制轉成數字
-        # 這會一次解決 avg_views, subscriber_count, heat_score 等所有欄位的問題
+        if "date" in df_yt_sheet.columns:
+            df_yt_sheet["date"] = pd.to_datetime(df_yt_sheet["date"])
+
         for col in df_yt_sheet.columns:
-            if col != 'date':
-                # errors='coerce' 會把無法轉數字的變成 NaN，然後 fillna(0) 補成 0
-                df_yt_sheet[col] = pd.to_numeric(df_yt_sheet[col], errors='coerce').fillna(0)
+            if col != "date":
+                df_yt_sheet[col] = pd.to_numeric(df_yt_sheet[col], errors="coerce").fillna(0)
+
     # =========================================================
-    # 4. 早期模擬數據 (2010-2014) - 保持原本邏輯
+    # 3. 早期模擬數據 2010-2014，保留原本邏輯
     # =========================================================
     real_points = [
         ("2010-07-17", 0.05), ("2011-02-09", 1.00), ("2011-06-08", 31.00),
@@ -2500,136 +2407,170 @@ def load_data_and_compute():
         ("2013-04-09", 230.00), ("2013-07-06", 66.00), ("2013-11-30", 1150.00),
         ("2014-04-10", 360.00), ("2014-09-16", 450.00)
     ]
-    
+
     data_rows = []
-    for i in range(len(real_points)-1):
+
+    for i in range(len(real_points) - 1):
         d1 = pd.to_datetime(real_points[i][0])
         p1 = real_points[i][1]
-        d2 = pd.to_datetime(real_points[i+1][0])
-        p2 = real_points[i+1][1]
-        
+        d2 = pd.to_datetime(real_points[i + 1][0])
+        p2 = real_points[i + 1][1]
+
         days = (d2 - d1).days
-        if days <= 0: continue
-        
+        if days <= 0:
+            continue
+
         prices = np.logspace(np.log10(p1), np.log10(p2), days, endpoint=False)
-        noise = np.random.normal(0, p1*0.05, days)
+        noise = np.random.normal(0, p1 * 0.05, days)
         prices = prices + noise
-        
+
         curr = d1
         for p in prices:
-            if p <= 0: p = 0.01
+            if p <= 0:
+                p = 0.01
+
             data_rows.append({
-                "open_time": curr, "open": p, "high": p, "low": p, "close": p, "volume": p*1000
+                "open_time": curr,
+                "open": p,
+                "high": p,
+                "low": p,
+                "close": p,
+                "volume": p * 1000
             })
+
             curr += timedelta(days=1)
-            
+
     df_early = pd.DataFrame(data_rows)
-    df_early = df_early.loc[:, ~df_early.columns.duplicated()]
+
+    if not df_early.empty:
+        df_early = df_early.loc[:, ~df_early.columns.duplicated()]
 
     # =========================================================
-    # 5. 數據合併
+    # 4. 合併早期模擬資料 + Supabase 價格資料
     # =========================================================
     df_final_list = []
 
-    # A. 處理早期模擬數據
-    if not df_history.empty:
-        min_hist_date = df_history['open_time'].min()
-        df_early = df_early[df_early['open_time'] < min_hist_date]
-    
+    if not df_history.empty and not df_early.empty:
+        min_hist_date = df_history["open_time"].min()
+        df_early = df_early[df_early["open_time"] < min_hist_date]
+
     if not df_early.empty:
-        df_final_list.append(df_early[['open_time', 'open', 'high', 'low', 'close', 'volume']])
+        df_final_list.append(df_early[["open_time", "open", "high", "low", "close", "volume"]])
 
-    # B. 加入 Sheet 歷史數據 (Bitstamp替代品)
     if not df_history.empty:
-        df_final_list.append(df_history[['open_time', 'open', 'high', 'low', 'close', 'volume']])
+        df_final_list.append(df_history[["open_time", "open", "high", "low", "close", "volume"]])
 
-    # C. 加入 Binance 數據
-    if not df_binance.empty:
-        df_binance['open_time'] = pd.to_datetime(df_binance['open_time'])
-        if not df_history.empty:
-            max_hist = df_history['open_time'].max()
-            df_binance = df_binance[df_binance['open_time'] > max_hist]
-        else:
-            max_early = df_early['open_time'].max()
-            df_binance = df_binance[df_binance['open_time'] > max_early]
-        
-        if not df_binance.empty:
-            df_final_list.append(df_binance[['open_time', 'open', 'high', 'low', 'close', 'volume']])
-
-    # 合併
     if df_final_list:
         df = pd.concat(df_final_list, ignore_index=True)
-        df = df.drop_duplicates(subset=['open_time']).sort_values('open_time').reset_index(drop=True)
+        df = (
+            df
+            .drop_duplicates(subset=["open_time"])
+            .sort_values("open_time")
+            .reset_index(drop=True)
+        )
     else:
-        return pd.DataFrame(columns=['open_time', 'open', 'high', 'low', 'close', 'volume', 'total_risk'])
+        return pd.DataFrame(columns=["open_time", "open", "high", "low", "close", "volume", "total_risk"])
 
-    # 數值轉換
-    for col in ['open', 'high', 'low', 'close', 'volume']:
-        if col in df.columns: df[col] = pd.to_numeric(df[col], errors='coerce')
+    for col in ["open", "high", "low", "close", "volume"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
 
     # =========================================================
-    # 6. 計算風險
+    # 5. 計算風險資料：Fear & Greed
     # =========================================================
-    df['date_only'] = df['open_time'].dt.date
-    
-    # 外部數據 API
+    df["date_only"] = pd.to_datetime(df["open_time"]).dt.date
+
     df_fg = fetch_fear_greed_index()
-    if not df_fg.empty:
-        df_fg['date_only'] = df_fg['date'].dt.date
-        df = df.merge(df_fg[['date_only', 'fear_greed']], on='date_only', how='left')
-        df['fear_greed'] = df['fear_greed'].interpolate().ffill().bfill()
 
-    # 合併 Wiki (優先使用 Sheet 讀到的)
-    if not df_wiki_sheet.empty:
-        df_wiki_sheet['date_only'] = df_wiki_sheet['date_wiki'].dt.date
-        df = df.merge(df_wiki_sheet[['date_only', 'wiki_views']], on='date_only', how='left')
-        df['wiki_views'] = df['wiki_views'].interpolate().ffill().bfill()
-    else:
-        # 如果 Sheet 沒讀到，才嘗試原本的 API (可選)
+    if not df_fg.empty:
+        df_fg["date_only"] = pd.to_datetime(df_fg["date"]).dt.date
+        df = df.merge(df_fg[["date_only", "fear_greed"]], on="date_only", how="left")
+        df["fear_greed"] = df["fear_greed"].interpolate().ffill().bfill()
+
+    # =========================================================
+    # 6. Wiki：只讀 Supabase，不寫入
+    #    如果 Supabase 沒資料，才 fallback 到原本 API/cache
+    # =========================================================
+    try:
+        df_wiki = read_wiki_metric()
+    except Exception as e:
+        print(f"⚠️ 讀取 wiki_metric 失敗，改用 API/cache：{e}")
+        df_wiki = pd.DataFrame()
+
+    if df_wiki.empty:
         df_wiki = fetch_wikipedia_views_history()
-        if not df_wiki.empty:
-            df_wiki['date_only'] = df_wiki['date_wiki'].dt.date
-            df = df.merge(df_wiki[['date_only', 'wiki_views']], on='date_only', how='left')
-            df['wiki_views'] = df['wiki_views'].interpolate().ffill().bfill()
-        
-    # 其他 API
+
+    if not df_wiki.empty:
+        df_wiki["date_wiki"] = pd.to_datetime(df_wiki["date_wiki"])
+        df_wiki["date_only"] = df_wiki["date_wiki"].dt.date
+
+        if "wiki_views" in df_wiki.columns:
+            df_wiki["wiki_views"] = pd.to_numeric(df_wiki["wiki_views"], errors="coerce").fillna(0)
+
+        df = df.merge(df_wiki[["date_only", "wiki_views"]], on="date_only", how="left")
+        df["wiki_views"] = df["wiki_views"].interpolate().ffill().bfill()
+
+    # =========================================================
+    # 7. 其他外部 API
+    # =========================================================
     df_bc = fetch_blockchain_com_stats()
     df_cg = fetch_coinglass_sentiment()
     df_gn = fetch_google_news_mentions()
     df_obt = fetch_bitcoin_obituaries()
     cmc_rank = fetch_cmc_trending()
 
-    df['date_index'] = pd.to_datetime(df['open_time']).dt.normalize()
-    df = df.set_index('date_index', drop=False)
+    df["date_index"] = pd.to_datetime(df["open_time"]).dt.normalize()
+    df = df.set_index("date_index", drop=False)
 
-    # 使用 Sheet 讀到的 YT 數據
-    yt_source = df_yt_sheet if not df_yt_sheet.empty else load_youtube_activity_history()
+    # YouTube：使用 Supabase / cache 讀到的 df_yt_sheet
+    yt_source = df_yt_sheet if df_yt_sheet is not None and not df_yt_sheet.empty else pd.DataFrame()
 
+    # =========================================================
+    # 8. 計算完整歷史風險
+    # =========================================================
     df_full = compute_risk(
-        df.copy(), 
-        df_blockchain_com=df_bc, df_coinglass=df_cg, df_google_news=df_gn,
-        df_obituaries=df_obt, cmc_rank=cmc_rank, df_youtube_activity=yt_source
+        df.copy(),
+        df_blockchain_com=df_bc,
+        df_coinglass=df_cg,
+        df_google_news=df_gn,
+        df_obituaries=df_obt,
+        cmc_rank=cmc_rank,
+        df_youtube_activity=yt_source
     )
 
+    # =========================================================
+    # 9. 重新計算 2017 後近期風險，覆蓋 price_risk/social_risk/total_risk
+    # =========================================================
     cutoff_date = pd.to_datetime("2017-08-17")
-    df_recent = df[df['open_time'] >= cutoff_date].copy()
-    
+    df_recent = df[df["open_time"] >= cutoff_date].copy()
+
     if not df_recent.empty:
         df_recent = compute_risk(
             df_recent,
-            df_blockchain_com=df_bc, df_coinglass=df_cg, df_google_news=df_gn,
-            df_obituaries=df_obt, cmc_rank=cmc_rank, df_youtube_activity=yt_source
+            df_blockchain_com=df_bc,
+            df_coinglass=df_cg,
+            df_google_news=df_gn,
+            df_obituaries=df_obt,
+            cmc_rank=cmc_rank,
+            df_youtube_activity=yt_source
         )
-    
+
     df_final = df_full.copy()
     df_final = df_final.reset_index(drop=True)
+
     if not df_recent.empty:
-        df_recent = df_recent.set_index('open_time')
-        df_final = df_final.set_index('open_time')
-        cols_to_overwrite = ['price_risk', 'social_risk', 'total_risk']
+        df_recent = df_recent.set_index("open_time")
+        df_final = df_final.set_index("open_time")
+
+        cols_to_overwrite = ["price_risk", "social_risk", "total_risk"]
         df_final.update(df_recent[cols_to_overwrite])
+
         df_final = df_final.reset_index()
-    
+
+    # =========================================================
+    # 10. 注意：這裡不寫 risk_score
+    #     risk_score 請用 sidebar 按鈕手動寫入
+    # =========================================================
     return df_final
 
 # 支援對數座標
@@ -3788,6 +3729,36 @@ def main():
                 st.success(f"Supabase 連線成功：{result.current_time}")
             except Exception as e:
                 st.error(f"Supabase 連線失敗：{e}")
+        if st.button("同步 Binance 到 Supabase", use_container_width=True):
+            try:
+                df_binance = fetch_binance_klines(symbol="BTCUSDT")
+
+                if not df_binance.empty:
+                    df_binance = df_binance.loc[:, ~df_binance.columns.duplicated()]
+                    df_binance = df_binance[[
+                        "open_time", "open", "high", "low", "close", "volume"
+                    ]]
+
+                    rows = save_market_price(df_binance, symbol="BTCUSDT")
+                    write_sync_log("binance", "SUCCESS", rows_inserted=rows)
+
+                    st.success(f"成功寫入 / 更新 {rows} 筆 Binance 資料到 Supabase")
+
+                    st.cache_data.clear()
+                    st.rerun()
+
+                else:
+                    write_sync_log(
+                        "binance",
+                        "FAILED",
+                        rows_inserted=0,
+                        error_message="Binance returned empty dataframe"
+                    )
+                    st.warning("Binance 沒有抓到資料")
+
+            except Exception as e:
+                write_sync_log("binance", "FAILED", error_message=str(e))
+                st.error(f"同步 Binance 到 Supabase 失敗：{e}")
         # with st.expander("📥 數據回填工具", expanded=False):
         #     c1, c2 = st.columns(2)
         #     c1.button("📺 YT", key="yt_btn", use_container_width=True)
