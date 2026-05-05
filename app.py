@@ -159,7 +159,12 @@ def fetch_binance_klines(symbol="BTCUSDT", interval="1d", start_date="2017-08-17
             if resp.status_code != 200:
                 # 抓取 Retry-After 標頭
                 retry_after = resp.headers.get('Retry-After')
-                
+                error_msg = (
+                    f"Binance HTTP {resp.status_code}\n"
+                    f"Response: {resp.text[:500]}\n"
+                    f"Retry-After: {retry_after}"
+                )
+                print(error_msg)
                 if retry_after:
                     st.error(f"❌ IP 已被幣安封鎖！請等待 {retry_after} 秒（約 {int(retry_after)/60:.1f} 分鐘）後再試。")
                     print(f"🔒 封禁倒數: {retry_after} 秒")
