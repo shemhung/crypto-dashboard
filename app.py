@@ -125,32 +125,37 @@ import streamlit as st # 記得引入 streamlit
 def fetch_binance_klines(symbol="BTCUSDT", interval="1d", start_date="2017-08-17"):
     url = "https://api.binance.com/api/v3/klines"
     all_data = []
+
     start_time = int(pd.to_datetime(start_date).timestamp() * 1000)
     end_time = int(datetime.now().timestamp() * 1000)
     current_start = start_time
-    
-    # ============================================================
-    # 1. 直接從 Secrets 讀取 WebShare Proxy (不用迴圈測試)
-    # ============================================================
+
     try:
         proxy_url = st.secrets["general"]["binance_proxy"]
         working_proxy = {
             "http": proxy_url,
             "https": proxy_url
         }
-        print(f"🚀 使用 WebShare Proxy 連線...")
+        print("使用 Proxy 連線 Binance")
     except Exception:
-        st.error("❌ 尚未設定 binance_proxy！請檢查 secrets.toml")
+        st.error("尚未設定 binance_proxy，請檢查 secrets.toml")
         return pd.DataFrame()
 
-    # 2. 設定偽裝 Headers (避免被防火牆擋)
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        "User-Agent": "Mozilla/5.0"
     }
 
-    # 3. 開始抓取迴圈
+    progress_msg = st.empty()
+    progress_msg.info("正在連線 Binance 並同步市場資料...")
+
     while current_start < end_time:
-        params = {"symbol": symbol, "interval": interval, "startTime": current_start, "limit": 1000}
+        params = {
+            "symbol": symbol,
+            "interval": interval,
+            "startTime": current_start,
+            "limit": 1000
+        }
+
         try:
             resp = requests.get(
                 url,
@@ -160,46 +165,84 @@ def fetch_binance_klines(symbol="BTCUSDT", interval="1d", start_date="2017-08-17
                 timeout=20
             )
 
-            # st.write("Binance HTTP 狀態碼：", resp.status_code)
-            # st.write("Binance 回傳前 500 字：", resp.text[:500])
-            # st.write("使用的 Proxy：", proxy_url.split("@")[-1] if "@" in proxy_url else proxy_url)
-            if len(all_data) == 0:
-                st.info("正在連線 Binance 並同步市場資料...")
-
             if resp.status_code != 200:
+                progress_msg.empty()
                 st.error("Binance 資料同步失敗，請稍後再試。")
                 print("Binance HTTP 狀態碼：", resp.status_code)
                 print("Binance 回傳內容：", resp.text[:500])
                 return pd.DataFrame()
+
+            data = resp.json()
+
+            if not data:
+                break
+
+            all_data.extend(data)
+
+            # Binance K 線第 6 欄是 close_time
+            last_close_time = data[-1][6]
+            current_start = last_close_time + 1
+
+            progress_msg.info(f"正在同步 Binance 市場資料... 已取得 {len(all_data)} 筆")
+
+            # 如果這次回傳少於 1000 根，代表已經接近最新資料
+            if len(data) < 1000:
+                break
+
+            time.sleep(0.2)
+
         except requests.exceptions.ProxyError as e:
-            st.error(f"❌ Proxy 連線失敗：{e}")
+            progress_msg.empty()
+            st.error("資料來源連線失敗，請稍後再試或聯絡管理員。")
+            print(f"Proxy 連線失敗：{e}")
             return pd.DataFrame()
 
         except requests.exceptions.ConnectTimeout as e:
-            st.error(f"❌ Binance 連線逾時：{e}")
+            progress_msg.empty()
+            st.error("資料來源連線逾時，請稍後再試。")
+            print(f"Binance 連線逾時：{e}")
             return pd.DataFrame()
 
         except requests.exceptions.SSLError as e:
-            st.error(f"❌ SSL 錯誤：{e}")
+            progress_msg.empty()
+            st.error("安全連線發生問題，請稍後再試。")
+            print(f"SSL 錯誤：{e}")
             return pd.DataFrame()
 
         except Exception as e:
-            st.error(f"❌ requests 發生未知錯誤：{type(e).__name__} - {e}")
+            progress_msg.empty()
+            st.error("資料同步時發生未知錯誤，請稍後再試。")
+            print(f"requests 發生未知錯誤：{type(e).__name__} - {e}")
             return pd.DataFrame()
-    
-    if not all_data: return pd.DataFrame()
 
-    # 4. 資料整理
-    cols = ["open_time", "open", "high", "low", "close", "volume", "close_time", "qv", "nt", "tb", "tq", "ig"]
+    progress_msg.empty()
+
+    if not all_data:
+        st.warning("Binance 沒有回傳可寫入的 K 線資料。")
+        return pd.DataFrame()
+
+    cols = [
+        "open_time", "open", "high", "low", "close", "volume",
+        "close_time", "qv", "nt", "tb", "tq", "ig"
+    ]
+
     df = pd.DataFrame(all_data, columns=cols)
+
     df["open_time"] = pd.to_datetime(df["open_time"], unit="ms")
-    
+
     for c in ["open", "high", "low", "close", "volume"]:
-        df[c] = df[c].astype(float)
-        
-    df = df.drop_duplicates(subset=['open_time']).reset_index(drop=True)
-    
-    print(f"✅ 成功抓取 {len(df)} 筆數據 (最新: {df['open_time'].max()})")
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+
+    df = (
+        df[["open_time", "open", "high", "low", "close", "volume"]]
+        .dropna()
+        .drop_duplicates(subset=["open_time"])
+        .sort_values("open_time")
+        .reset_index(drop=True)
+    )
+
+    st.success(f"Binance 市場資料同步完成，共取得 {len(df)} 筆資料，最新日期：{df['open_time'].max().date()}")
+
     return df
 
 # --- Google Trends ---
