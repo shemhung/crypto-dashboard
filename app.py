@@ -3837,7 +3837,16 @@ def main():
 
                     st.cache_data.clear()
 
-                    st.success(f"成功寫入 / 更新 {rows} 筆 Binance 資料到 Supabase，請重新整理後再寫入風險評分。")
+                    df_new = load_data_and_compute()
+
+                    if not df_new.empty:
+                        risk_rows = save_risk_score(df_new, symbol="BTCUSDT")
+                        st.success(f"成功寫入 / 更新 {rows} 筆 Binance 資料與 {risk_rows} 筆風險評分到 Supabase")
+                    else:
+                        st.warning(f"已成功寫入 {rows} 筆 Binance 資料，但風險評分尚未產生。請重新整理後再試。")
+
+                    st.cache_data.clear()
+                    st.rerun()
 
                 else:
                     write_sync_log(
