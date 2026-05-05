@@ -3832,21 +3832,12 @@ def main():
                 df_binance = fetch_binance_klines(symbol="BTCUSDT")
 
                 if not df_binance.empty:
-                    df_binance = df_binance.loc[:, ~df_binance.columns.duplicated()]
-                    df_binance = df_binance[[
-                        "open_time", "open", "high", "low", "close", "volume"
-                    ]]
-
                     rows = save_market_price(df_binance, symbol="BTCUSDT")
                     write_sync_log("binance", "SUCCESS", rows_inserted=rows)
-                    
-                    # 手動寫入 risk_score 到 supabase
-                    risk_rows = save_risk_score(df, symbol="BTCUSDT")
-
-                    st.success(f"成功寫入 / 更新 {rows} 筆 Binance 資料與 {risk_rows} 筆風險評分到 Supabase")
 
                     st.cache_data.clear()
-                    st.rerun()
+
+                    st.success(f"成功寫入 / 更新 {rows} 筆 Binance 資料到 Supabase，請重新整理後再寫入風險評分。")
 
                 else:
                     write_sync_log(
@@ -3855,7 +3846,7 @@ def main():
                         rows_inserted=0,
                         error_message="Binance returned empty dataframe"
                     )
-                    st.warning("Binance 沒有抓到資料")
+                    st.warning("Binance 沒有抓到可寫入的資料。")
 
             except Exception as e:
                 write_sync_log("binance", "FAILED", error_message=str(e))
