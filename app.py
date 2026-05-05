@@ -160,10 +160,17 @@ def fetch_binance_klines(symbol="BTCUSDT", interval="1d", start_date="2017-08-17
                 timeout=20
             )
 
-            st.write("Binance HTTP 狀態碼：", resp.status_code)
-            st.write("Binance 回傳前 500 字：", resp.text[:500])
-            st.write("使用的 Proxy：", proxy_url.split("@")[-1] if "@" in proxy_url else proxy_url)
+            # st.write("Binance HTTP 狀態碼：", resp.status_code)
+            # st.write("Binance 回傳前 500 字：", resp.text[:500])
+            # st.write("使用的 Proxy：", proxy_url.split("@")[-1] if "@" in proxy_url else proxy_url)
+            if len(all_data) == 0:
+                st.info("正在連線 Binance 並同步市場資料...")
 
+            if resp.status_code != 200:
+                st.error("Binance 資料同步失敗，請稍後再試。")
+                print("Binance HTTP 狀態碼：", resp.status_code)
+                print("Binance 回傳內容：", resp.text[:500])
+                return pd.DataFrame()
         except requests.exceptions.ProxyError as e:
             st.error(f"❌ Proxy 連線失敗：{e}")
             return pd.DataFrame()
