@@ -152,47 +152,33 @@ def fetch_binance_klines(symbol="BTCUSDT", interval="1d", start_date="2017-08-17
     while current_start < end_time:
         params = {"symbol": symbol, "interval": interval, "startTime": current_start, "limit": 1000}
         try:
-            # 加入 proxies 參數
-            resp = requests.get(url, params=params, headers=headers, proxies=working_proxy, timeout=10)
-            
-            # 如果被擋 (403/451)，代表這個 Proxy IP 是美國的，或者被 Ban 了
-            if resp.status_code != 200:
-                # 抓取 Retry-After 標頭
-                retry_after = resp.headers.get('Retry-After')
-                error_msg = (
-                    f"Binance HTTP {resp.status_code}\n"
-                    f"Response: {resp.text[:500]}\n"
-                    f"Retry-After: {retry_after}"
-                )
-                print(error_msg)
-                if retry_after:
-                    st.error(f"❌ IP 已被幣安封鎖！請等待 {retry_after} 秒（約 {int(retry_after)/60:.1f} 分鐘）後再試。")
-                    print(f"🔒 封禁倒數: {retry_after} 秒")
-                else:
-                    st.error(f"❌ 連線被拒 (HTTP {resp.status_code})。地區可能遭封鎖。")
-                
-                print(f"❌ 完整 Error: {resp.status_code} - {resp.text}")
-                # 印出所有標頭讓你看看幣安傳了什麼回來
-                print(f"🗂️ 伺服器標頭: {resp.headers}") 
-                break
+            resp = requests.get(
+                url,
+                params=params,
+                headers=headers,
+                proxies=working_proxy,
+                timeout=20
+            )
 
-            data = resp.json()
-            if not data: break
-            
-            # 防呆：檢查是否回傳錯誤訊息
-            if isinstance(data, dict) and 'code' in data: 
-                print(f"❌ Binance Error: {data}")
-                break
-                
-            all_data.extend(data)
-            current_start = data[-1][6] + 1
-            
-            # 稍微休息，避免太快把 WebShare 的流量用完或觸發 Binance 限制
-            time.sleep(0.6) 
-            
+            st.write("Binance HTTP 狀態碼：", resp.status_code)
+            st.write("Binance 回傳前 500 字：", resp.text[:500])
+            st.write("使用的 Proxy：", proxy_url.split("@")[-1] if "@" in proxy_url else proxy_url)
+
+        except requests.exceptions.ProxyError as e:
+            st.error(f"❌ Proxy 連線失敗：{e}")
+            return pd.DataFrame()
+
+        except requests.exceptions.ConnectTimeout as e:
+            st.error(f"❌ Binance 連線逾時：{e}")
+            return pd.DataFrame()
+
+        except requests.exceptions.SSLError as e:
+            st.error(f"❌ SSL 錯誤：{e}")
+            return pd.DataFrame()
+
         except Exception as e:
-            print(f"❌ 傳輸中斷: {e}")
-            break
+            st.error(f"❌ requests 發生未知錯誤：{type(e).__name__} - {e}")
+            return pd.DataFrame()
     
     if not all_data: return pd.DataFrame()
 
