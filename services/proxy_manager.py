@@ -7,33 +7,62 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+def get_config(name: str, default=None):
+    """
+    Read config from:
+    1. environment variables / .env
+    2. Streamlit root-level secrets
+    3. Streamlit [general] secrets with lowercase key
+    """
+    value = os.getenv(name)
+    if value is not None:
+        return value
 
+    try:
+        import streamlit as st
+
+        # root-level secrets:
+        # WEBSHARE_API_TOKEN = "xxx"
+        if name in st.secrets:
+            return st.secrets[name]
+
+        # [general] secrets:
+        # webshare_api_token = "xxx"
+        general_key = name.lower()
+        if "general" in st.secrets and general_key in st.secrets["general"]:
+            return st.secrets["general"][general_key]
+
+    except Exception:
+        pass
+
+    return default
 class ProxyManager:
     def __init__(self):
-        self.api_token = os.getenv("WEBSHARE_API_TOKEN")
-        self.mode = os.getenv("WEBSHARE_PROXY_MODE", "direct")
+        self.api_token = get_config("WEBSHARE_API_TOKEN")
+        self.mode = get_config("WEBSHARE_PROXY_MODE", "direct")
 
         self.exclude_countries = self._parse_country_list(
-            os.getenv("PROXY_EXCLUDE_COUNTRIES", "US")
+            get_config("PROXY_EXCLUDE_COUNTRIES", "US")
         )
 
         self.preferred_countries = self._parse_country_list(
-            os.getenv("PROXY_PREFERRED_COUNTRIES", "JP,GB")
+            get_config("PROXY_PREFERRED_COUNTRIES", "JP,GB")
         )
 
-        self.health_check_url = os.getenv(
+        self.health_check_url = get_config(
             "PROXY_HEALTH_CHECK_URL",
             "https://api.binance.com/api/v3/time",
         )
 
-        self.timeout = int(os.getenv("PROXY_TIMEOUT_SECONDS", "8"))
-        self.refresh_interval = int(os.getenv("PROXY_REFRESH_MINUTES", "30")) * 60
+        self.timeout = int(get_config("PROXY_TIMEOUT_SECONDS", "8"))
+        self.refresh_interval = int(get_config("PROXY_REFRESH_MINUTES", "30")) * 60
 
         self.last_refresh_time = 0.0
         self.proxy_items: List[Dict] = []
         self.active_proxy: Optional[Dict[str, str]] = None
         self.active_proxy_meta: Optional[Dict] = None
 
+    
     def _parse_country_list(self, value: str) -> set[str]:
         return {
             item.strip().upper()
