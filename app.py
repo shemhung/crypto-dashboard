@@ -25,6 +25,8 @@ import time
 import random
 import math
 import json
+from services.http_client import get_with_auto_proxy
+from services.proxy_manager import proxy_manager
 
 # 引入回填工具
 try:
@@ -130,16 +132,6 @@ def fetch_binance_klines(symbol="BTCUSDT", interval="1d", start_date="2017-08-17
     end_time = int(datetime.now().timestamp() * 1000)
     current_start = start_time
 
-    try:
-        proxy_url = st.secrets["general"]["binance_proxy"]
-        working_proxy = {
-            "http": proxy_url,
-            "https": proxy_url
-        }
-        print("使用 Proxy 連線 Binance")
-    except Exception:
-        st.error("尚未設定 binance_proxy，請檢查 secrets.toml")
-        return pd.DataFrame()
 
     headers = {
         "User-Agent": "Mozilla/5.0"
@@ -157,11 +149,10 @@ def fetch_binance_klines(symbol="BTCUSDT", interval="1d", start_date="2017-08-17
         }
 
         try:
-            resp = requests.get(
+            resp = get_with_auto_proxy(
                 url,
                 params=params,
                 headers=headers,
-                proxies=working_proxy,
                 timeout=20
             )
 
@@ -3866,7 +3857,33 @@ def main():
         #     c2.button("📖 Wiki", key="wiki_btn", use_container_width=True)
 
         st.caption(f"⚖️: F&G {FEAR_GREED_WEIGHT} | YT {YOUTUBE_WEIGHT} | Wiki {WIKIPEDIA_WEIGHT}")
+        
+        st.markdown("### 🌐 Proxy Manager")
 
+        proxy_status = proxy_manager.get_status()
+
+        if not proxy_status["has_api_token"]:
+            st.warning("Webshare API token 尚未設定")
+        else:
+            if st.button("刷新非美國 Proxy", use_container_width=True):
+                proxy = proxy_manager.rotate_proxy()
+
+                if proxy:
+                    st.success("已刷新非美國 Proxy")
+                else:
+                    st.error("找不到可用的非美國 Proxy")
+
+            active_proxy = proxy_manager.get_active_proxy()
+            proxy_status = proxy_manager.get_status()
+
+            if active_proxy and proxy_status["meta"]:
+                meta = proxy_status["meta"]
+                st.success("Proxy active")
+                st.caption(
+                    f"Location: {meta.get('country_code')} / {meta.get('city_name')}"
+                )
+            else:
+                st.warning("目前沒有可用的非美國 Proxy")
      
 
     # 5. 全域戰情室 Header (永遠置頂)
