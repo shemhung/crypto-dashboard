@@ -85,7 +85,7 @@ BACKUP_COINS = [
     "BNB", "TRX", "ADA", "ALGO", "ATOM", "DASH", "XTZ", "IOTA","XRP", "SOL", "BCH",  "XLM", "AAVE" , "ETC", "FIL", "QNT"
 ]
 TOP_COINS = [
-    "BTC", "ETH", "LINK", "FET", "RENDER", "DOGE", "LTC", 
+    "BTC", "ETH", "LINK", "FET", "RENDER", "DOGE", "LTC", "WLD"
 ]
 
 # 【總風險權重分配】
@@ -3857,7 +3857,7 @@ def main():
         #     c2.button("📖 Wiki", key="wiki_btn", use_container_width=True)
 
         st.caption(f"⚖️: F&G {FEAR_GREED_WEIGHT} | YT {YOUTUBE_WEIGHT} | Wiki {WIKIPEDIA_WEIGHT}")
-        
+
         st.markdown("### 🌐 Proxy Manager")
 
         proxy_status = proxy_manager.get_status()
