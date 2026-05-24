@@ -1,11 +1,22 @@
 import pandas as pd
 import streamlit as st
 from sqlalchemy import create_engine, text
-
+from dotenv import load_dotenv
+import os
+load_dotenv()
 
 @st.cache_resource
 def get_engine():
-    database_url = st.secrets["postgres"]["database_url"]
+    database_url = os.getenv("DATABASE_URL")
+
+    if not database_url:
+        try:
+            database_url = st.secrets["postgres"]["database_url"]
+        except Exception:
+            raise RuntimeError(
+                "DATABASE_URL not found. Please set it in .env or Streamlit secrets."
+            )
+
     return create_engine(
         database_url,
         pool_pre_ping=True,
