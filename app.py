@@ -17,6 +17,8 @@ import sys
 import io
 import os
 import requests
+
+from backend.app.core.config import DEFAULT_RISK_WEIGHTS
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
@@ -89,28 +91,28 @@ TOP_COINS = [
 ]
 
 # 【總風險權重分配】
-SOCIAL_RISK_WEIGHT = 1.0      
-PRICE_RISK_WEIGHT = 0.0       
-DERIVATIVE_RISK_WEIGHT = 0.0  
-VOLUME_RISK_WEIGHT = 0.0      
+SOCIAL_RISK_WEIGHT = DEFAULT_RISK_WEIGHTS.social      
+PRICE_RISK_WEIGHT = DEFAULT_RISK_WEIGHTS.price      
+DERIVATIVE_RISK_WEIGHT = DEFAULT_RISK_WEIGHTS.derivative  
+VOLUME_RISK_WEIGHT = DEFAULT_RISK_WEIGHTS.volume      
 
 # 【社交風險內部權重】
-FEAR_GREED_WEIGHT = 0.5        
-YOUTUBE_WEIGHT = 0.3           
-WIKIPEDIA_WEIGHT = 0.2         
-BLOCKCHAIN_COM_WEIGHT = 0.0   
-COINGLASS_WEIGHT = 0.0        
-GOOGLE_NEWS_WEIGHT = 0.0      
-BTC_OBITUARIES_WEIGHT = 0.0   
-CMC_TRENDING_WEIGHT = 0.0     
+FEAR_GREED_WEIGHT = DEFAULT_RISK_WEIGHTS.fear_greed       
+YOUTUBE_WEIGHT = DEFAULT_RISK_WEIGHTS.youtube         
+WIKIPEDIA_WEIGHT = DEFAULT_RISK_WEIGHTS.wikipedia         
+BLOCKCHAIN_COM_WEIGHT = DEFAULT_RISK_WEIGHTS.blockchain   
+COINGLASS_WEIGHT = DEFAULT_RISK_WEIGHTS.coinglass        
+GOOGLE_NEWS_WEIGHT = DEFAULT_RISK_WEIGHTS.google_news      
+BTC_OBITUARIES_WEIGHT = DEFAULT_RISK_WEIGHTS.obituaries   
+CMC_TRENDING_WEIGHT = DEFAULT_RISK_WEIGHTS.cmc_trending    
 
 # 權重為 0 的項目
-TRENDS_WEIGHT = 0.00           
-REDDIT_WEIGHT = 0.00           
-TWITTER_WEIGHT = 0.0           
-CRYPTOPANIC_WEIGHT = 0.00      
-BITINFOCHARTS_WEIGHT = 0.00    
-LUNARCRUSH_WEIGHT = 0.00       
+TRENDS_WEIGHT = DEFAULT_RISK_WEIGHTS.google_trends           
+REDDIT_WEIGHT = DEFAULT_RISK_WEIGHTS.reddit           
+TWITTER_WEIGHT = DEFAULT_RISK_WEIGHTS.twitter           
+CRYPTOPANIC_WEIGHT = DEFAULT_RISK_WEIGHTS.cryptopanic      
+BITINFOCHARTS_WEIGHT = DEFAULT_RISK_WEIGHTS.bitinfocharts    
+LUNARCRUSH_WEIGHT = DEFAULT_RISK_WEIGHTS.lunarcrush       
 
 # ============================================================
 # 2. 數據抓取函數
