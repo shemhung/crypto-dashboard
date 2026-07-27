@@ -20,6 +20,10 @@ import requests
 
 from backend.app.core.config import DEFAULT_RISK_WEIGHTS
 from backend.app.services.risk_service import compute_risk
+from backend.app.data_sources.binance import (
+    BinanceAPIError,
+    fetch_binance_klines as fetch_binance_klines_data,
+)
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
@@ -127,115 +131,58 @@ import streamlit as st # 記得引入 streamlit
 
 # 移除 get_free_proxies 函數，因為我們直接用付費/穩定的 Proxy，不用爬蟲
 
-def fetch_binance_klines(symbol="BTCUSDT", interval="1d", start_date="2017-08-17"):
-    url = "https://api.binance.com/api/v3/klines"
-    all_data = []
+def fetch_binance_klines(symbol="BTCUSDT",interval="1d",start_date="2017-08-17",):
+    """
+    Streamlit UI 包裝層。
 
-    start_time = int(pd.to_datetime(start_date).timestamp() * 1000)
-    end_time = int(datetime.now().timestamp() * 1000)
-    current_start = start_time
+    真正的 Binance 資料抓取邏輯位於：
+    backend/app/data_sources/binance.py
+    """
 
-
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
-
-    progress_msg = st.empty()
-    progress_msg.info("正在連線 Binance 並同步市場資料...")
-
-    while current_start < end_time:
-        params = {
-            "symbol": symbol,
-            "interval": interval,
-            "startTime": current_start,
-            "limit": 1000
-        }
-
-        try:
-            resp = get_with_auto_proxy(
-                url,
-                params=params,
-                headers=headers,
-                timeout=20
-            )
-
-            if resp.status_code != 200:
-                progress_msg.empty()
-                st.error("Binance 資料同步失敗，請稍後再試。")
-                print("Binance HTTP 狀態碼：", resp.status_code)
-                print("Binance 回傳內容：", resp.text[:500])
-                return pd.DataFrame()
-
-            data = resp.json()
-
-            if not data:
-                break
-
-            all_data.extend(data)
-
-            # Binance K 線第 6 欄是 close_time
-            last_close_time = data[-1][6]
-            current_start = last_close_time + 1
-
-            progress_msg.info(f"正在同步 Binance 市場資料... 已取得 {len(all_data)} 筆")
-
-            # 如果這次回傳少於 1000 根，代表已經接近最新資料
-            if len(data) < 1000:
-                break
-
-            time.sleep(0.2)
-
-        except requests.exceptions.ProxyError as e:
-            progress_msg.empty()
-            st.error("資料來源連線失敗，請稍後再試或聯絡管理員。")
-            print(f"Proxy 連線失敗：{e}")
-            return pd.DataFrame()
-
-        except requests.exceptions.ConnectTimeout as e:
-            progress_msg.empty()
-            st.error("資料來源連線逾時，請稍後再試。")
-            print(f"Binance 連線逾時：{e}")
-            return pd.DataFrame()
-
-        except requests.exceptions.SSLError as e:
-            progress_msg.empty()
-            st.error("安全連線發生問題，請稍後再試。")
-            print(f"SSL 錯誤：{e}")
-            return pd.DataFrame()
-
-        except Exception as e:
-            progress_msg.empty()
-            st.error("資料同步時發生未知錯誤，請稍後再試。")
-            print(f"requests 發生未知錯誤：{type(e).__name__} - {e}")
-            return pd.DataFrame()
-
-    progress_msg.empty()
-
-    if not all_data:
-        st.warning("Binance 沒有回傳可寫入的 K 線資料。")
-        return pd.DataFrame()
-
-    cols = [
-        "open_time", "open", "high", "low", "close", "volume",
-        "close_time", "qv", "nt", "tb", "tq", "ig"
-    ]
-
-    df = pd.DataFrame(all_data, columns=cols)
-
-    df["open_time"] = pd.to_datetime(df["open_time"], unit="ms")
-
-    for c in ["open", "high", "low", "close", "volume"]:
-        df[c] = pd.to_numeric(df[c], errors="coerce")
-
-    df = (
-        df[["open_time", "open", "high", "low", "close", "volume"]]
-        .dropna()
-        .drop_duplicates(subset=["open_time"])
-        .sort_values("open_time")
-        .reset_index(drop=True)
+    progress_message = st.empty()
+    progress_message.info(
+        "正在連線 Binance 並同步市場資料..."
     )
 
-    st.success(f"Binance 市場資料同步完成，共取得 {len(df)} 筆資料，最新日期：{df['open_time'].max().date()}")
+    def update_progress(row_count):
+        progress_message.info(
+            f"正在同步 Binance 市場資料，已取得 {row_count} 筆"
+        )
+
+    try:
+        df = fetch_binance_klines_data(
+            symbol=symbol,
+            interval=interval,
+            start_date=start_date,
+            progress_callback=update_progress,
+        )
+
+    except BinanceAPIError as exc:
+        progress_message.empty()
+
+        st.error(
+            "Binance 資料同步失敗，請稍後再試。"
+        )
+
+        print(f"Binance 同步失敗：{exc}")
+
+        return pd.DataFrame()
+
+    progress_message.empty()
+
+    if df.empty:
+        st.warning(
+            "Binance 沒有回傳可使用的 K 線資料。"
+        )
+        return df
+
+    latest_date = df["open_time"].max().date()
+
+    st.success(
+        f"Binance 市場資料同步完成，"
+        f"共取得 {len(df)} 筆資料，"
+        f"最新日期：{latest_date}"
+    )
 
     return df
 
