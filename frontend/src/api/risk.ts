@@ -31,3 +31,22 @@ export function getRiskHistory(
     signal,
   );
 }
+
+
+export function getRiskHistoryByDateRange(
+  symbol: string,
+  startDate: string,
+  endDate: string,
+  signal?: AbortSignal,
+): Promise<RiskHistoryResponse> {
+  const params = new URLSearchParams({
+    symbol,
+    start_date: startDate,
+    end_date: endDate,
+  });
+
+  return apiGet<RiskHistoryResponse>(
+    `/api/v1/risk/history?${params.toString()}`,
+    signal,
+  );
+}

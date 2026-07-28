@@ -1,0 +1,47 @@
+.risk-analysis-page {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+}
+
+.risk-analysis-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.risk-analysis-heading h2 {
+  margin: 0 0 6px;
+}
+
+.risk-analysis-heading p {
+  margin: 0;
+  opacity: 0.7;
+}
+
+.date-range {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 4px 12px;
+  padding: 12px 16px;
+  border: 1px solid rgba(127, 127, 127, 0.3);
+  border-radius: 10px;
+  font-size: 14px;
+}
+
+.date-range span {
+  opacity: 0.65;
+}
+
+.risk-analysis-error {
+  padding: 16px;
+  border: 1px solid currentColor;
+  border-radius: 10px;
+}
+
+@media (max-width: 760px) {
+  .risk-analysis-heading {
+    flex-direction: column;
+  }
+}
