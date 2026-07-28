@@ -1,5 +1,8 @@
 from fastapi import FastAPI
 
+from backend.app.api.health import router as health_router
+from backend.app.api.risk import router as risk_router
+
 
 app = FastAPI(
     title="Crypto Dashboard API",
@@ -8,11 +11,5 @@ app = FastAPI(
 )
 
 
-@app.get("/health")
-def health_check() -> dict[str, str]:
-    """確認後端服務是否正常運作。"""
-
-    return {
-        "status": "ok",
-        "service": "crypto-dashboard-api",
-    }
+app.include_router(health_router)
+app.include_router(risk_router)
