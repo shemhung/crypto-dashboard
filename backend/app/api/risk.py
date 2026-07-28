@@ -1,18 +1,113 @@
 import pandas as pd
-from fastapi import APIRouter, HTTPException, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    status,
+)
 
 from backend.app.schemas.risk import (
     RiskCalculationRequest,
     RiskCalculationResponse,
+    RiskHistoryResponse,
     RiskPointResponse,
+    StoredRiskPointResponse,
 )
 from backend.app.services.risk_service import compute_risk
+from sqlalchemy.exc import SQLAlchemyError
+
+from backend.app.dependencies import get_market_repository
+from backend.app.repositories.market_repository import (
+    MarketRepository,
+)
 
 
+    
 router = APIRouter(
     prefix="/api/v1/risk",
     tags=["risk"],
 )
+
+@router.get(
+    "/latest",
+    response_model=StoredRiskPointResponse,
+)
+def get_latest_risk(
+    symbol: str = Query(
+        default="BTCUSDT",
+        min_length=3,
+        max_length=20,
+    ),
+    repository: MarketRepository = Depends(
+        get_market_repository
+    ),
+) -> StoredRiskPointResponse:
+    """取得指定資產最新一筆風險資料。"""
+
+    try:
+        record = repository.get_latest_risk(
+            symbol=symbol.upper(),
+        )
+
+    except SQLAlchemyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="資料庫目前無法使用",
+        ) from exc
+
+    if record is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="找不到指定資產的風險資料",
+        )
+
+    return StoredRiskPointResponse(**record)
+
+
+@router.get(
+    "/history",
+    response_model=RiskHistoryResponse,
+)
+def get_risk_history(
+    symbol: str = Query(
+        default="BTCUSDT",
+        min_length=3,
+        max_length=20,
+    ),
+    limit: int = Query(
+        default=100,
+        ge=1,
+        le=1000,
+    ),
+    repository: MarketRepository = Depends(
+        get_market_repository
+    ),
+) -> RiskHistoryResponse:
+    """取得指定資產的歷史風險資料。"""
+
+    try:
+        records = repository.get_risk_history(
+            symbol=symbol.upper(),
+            limit=limit,
+        )
+
+    except SQLAlchemyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="資料庫目前無法使用",
+        ) from exc
+
+    response_records = [
+        StoredRiskPointResponse(**record)
+        for record in records
+    ]
+
+    return RiskHistoryResponse(
+        count=len(response_records),
+        records=response_records,
+    )
+
 
 
 @router.post(

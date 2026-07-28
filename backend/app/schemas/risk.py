@@ -48,3 +48,22 @@ class RiskCalculationResponse(BaseModel):
 
     count: int
     records: list[RiskPointResponse]
+
+
+class StoredRiskPointResponse(BaseModel):
+    """資料庫中保存的一筆風險資料。"""
+
+    symbol: str
+    score_time: datetime
+    price: float | None
+    total_risk: float
+    price_risk: float
+    social_risk: float
+    risk_level: str
+
+
+class RiskHistoryResponse(BaseModel):
+    """歷史風險 API 回傳格式。"""
+
+    count: int
+    records: list[StoredRiskPointResponse]
