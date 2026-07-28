@@ -1,0 +1,40 @@
+.risk-chart-card {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid rgba(127, 127, 127, 0.3);
+  border-radius: 12px;
+}
+
+.risk-chart-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.risk-chart-heading h3 {
+  margin: 0 0 4px;
+}
+
+.risk-chart-heading p {
+  margin: 0;
+  opacity: 0.7;
+}
+
+.risk-chart-heading span {
+  font-size: 14px;
+  opacity: 0.7;
+}
+
+.risk-chart-container {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+@media (max-width: 640px) {
+  .risk-chart-heading {
+    flex-direction: column;
+  }
+}

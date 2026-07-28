@@ -11,7 +11,7 @@ import type {
 } from "../types/risk";
 
 import "./DashboardPage.css";
-
+import RiskTrendChart from "../components/charts/RiskTrendChart";
 
 function formatPrice(price: number | null): string {
   if (price === null) {
@@ -185,6 +185,10 @@ function DashboardPage() {
           </strong>
         </article>
       </div>
+
+      <RiskTrendChart
+        records={history.records}
+      />
 
 
       <section className="history-section">
