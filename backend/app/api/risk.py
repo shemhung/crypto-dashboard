@@ -1,4 +1,5 @@
 import pandas as pd
+from datetime import date
 from fastapi import (
     APIRouter,
     Depends,
@@ -75,10 +76,27 @@ def get_risk_history(
         min_length=3,
         max_length=20,
     ),
-    limit: int = Query(
-        default=100,
+    start_date: date | None = Query(
+        default=None,
+        description=(
+            "開始日期，格式為 YYYY-MM-DD"
+        ),
+    ),
+    end_date: date | None = Query(
+        default=None,
+        description=(
+            "結束日期，格式為 YYYY-MM-DD；"
+            "省略時查詢到最新資料"
+        ),
+    ),
+    limit: int | None = Query(
+        default=None,
         ge=1,
-        le=1000,
+        le=10000,
+        description=(
+            "限制回傳筆數；"
+            "省略時回傳日期範圍內全部資料"
+        ),
     ),
     repository: MarketRepository = Depends(
         get_market_repository
@@ -86,15 +104,33 @@ def get_risk_history(
 ) -> RiskHistoryResponse:
     """取得指定資產的歷史風險資料。"""
 
+    if (
+        start_date is not None
+        and end_date is not None
+        and start_date > end_date
+    ):
+        raise HTTPException(
+            status_code=(
+                status.HTTP_422_UNPROCESSABLE_ENTITY
+            ),
+            detail=(
+                "start_date 不可晚於 end_date"
+            ),
+        )
+
     try:
         records = repository.get_risk_history(
             symbol=symbol.upper(),
+            start_date=start_date,
+            end_date=end_date,
             limit=limit,
         )
 
     except SQLAlchemyError as exc:
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            status_code=(
+                status.HTTP_503_SERVICE_UNAVAILABLE
+            ),
             detail="資料庫目前無法使用",
         ) from exc
 

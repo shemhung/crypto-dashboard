@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 import pytest
@@ -40,17 +40,26 @@ class FakeMarketRepository:
     def get_risk_history(
         self,
         symbol: str = "BTCUSDT",
-        limit: int = 100,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        limit: int | None = None,
     ) -> list[dict[str, Any]]:
         self.history_arguments = (
             symbol,
+            start_date,
+            end_date,
             limit,
         )
 
         if self.error is not None:
             raise self.error
 
-        return self.history_records[:limit]
+        records = self.history_records
+
+        if limit is not None:
+            records = records[-limit:]
+
+        return records
 
 
 @pytest.fixture
@@ -268,6 +277,8 @@ def test_get_risk_history(client: TestClient):
 
     assert repository.history_arguments == (
         "BTCUSDT",
+        None,
+        None,
         2,
     )
 
@@ -330,3 +341,62 @@ def test_get_risk_history_rejects_invalid_limit(
     )
 
     assert response.status_code == 422
+
+    
+    def test_get_risk_history_with_date_range(
+        client: TestClient,
+    ):
+        repository = FakeMarketRepository(
+            history_records=[
+                {
+                    "symbol": "BTCUSDT",
+                    "score_time": datetime(
+                        2017,
+                        8,
+                        17,
+                    ),
+                    "price": 4300.0,
+                    "total_risk": 0.20,
+                    "price_risk": 0.10,
+                    "social_risk": 0.20,
+                    "risk_level": "BUY",
+                },
+                {
+                    "symbol": "BTCUSDT",
+                    "score_time": datetime(
+                        2026,
+                        7,
+                        29,
+                    ),
+                    "price": 118000.0,
+                    "total_risk": 0.45,
+                    "price_risk": 0.30,
+                    "social_risk": 0.45,
+                    "risk_level": "HODL",
+                },
+            ]
+        )
+
+        use_fake_repository(repository)
+
+        response = client.get(
+            "/api/v1/risk/history",
+            params={
+                "symbol": "btcusdt",
+                "start_date": "2017-08-17",
+                "end_date": "2026-07-29",
+            },
+        )
+
+        assert response.status_code == 200
+
+        response_body = response.json()
+
+        assert response_body["count"] == 2
+
+        assert repository.history_arguments == (
+            "BTCUSDT",
+            date(2017, 8, 17),
+            date(2026, 7, 29),
+            None,
+        )

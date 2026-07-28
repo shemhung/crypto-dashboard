@@ -1,3 +1,4 @@
+from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from sqlalchemy import text
@@ -51,17 +52,65 @@ class MarketRepository:
     def get_risk_history(
         self,
         symbol: str = "BTCUSDT",
-        limit: int = 100,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        limit: int | None = None,
     ) -> list[dict[str, Any]]:
         """
-        取得指定資產最近幾筆風險資料。
+        取得指定資產的歷史風險資料。
 
-        最後按照時間由舊到新排列，
-        方便前端直接畫折線圖。
+        start_date 和 end_date 都包含在查詢範圍內。
+        limit 為 None 時，回傳日期範圍內的全部資料。
+
+        最終結果按照時間由舊到新排列。
         """
 
+        conditions = [
+            "symbol = :symbol",
+        ]
+
+        parameters: dict[str, Any] = {
+            "symbol": symbol,
+        }
+
+        if start_date is not None:
+            start_at = datetime.combine(
+                start_date,
+                time.min,
+            )
+
+            conditions.append(
+                "score_time >= :start_at"
+            )
+
+            parameters["start_at"] = start_at
+
+        if end_date is not None:
+            # 使用「隔天 00:00 之前」，確保 end_date 當天
+            # 任何時間的資料都會包含在結果中。
+            end_exclusive = datetime.combine(
+                end_date + timedelta(days=1),
+                time.min,
+            )
+
+            conditions.append(
+                "score_time < :end_exclusive"
+            )
+
+            parameters["end_exclusive"] = (
+                end_exclusive
+            )
+
+        where_clause = " AND ".join(conditions)
+
+        limit_clause = ""
+
+        if limit is not None:
+            limit_clause = "LIMIT :limit"
+            parameters["limit"] = limit
+
         query = text(
-            """
+            f"""
             SELECT
                 symbol,
                 score_time,
@@ -80,10 +129,10 @@ class MarketRepository:
                     social_risk,
                     risk_level
                 FROM risk_score
-                WHERE symbol = :symbol
+                WHERE {where_clause}
                 ORDER BY score_time DESC
-                LIMIT :limit
-            ) AS recent_records
+                {limit_clause}
+            ) AS selected_records
             ORDER BY score_time ASC
             """
         )
@@ -92,10 +141,7 @@ class MarketRepository:
             rows = (
                 connection.execute(
                     query,
-                    {
-                        "symbol": symbol,
-                        "limit": limit,
-                    },
+                    parameters,
                 )
                 .mappings()
                 .all()
