@@ -24,6 +24,9 @@ from backend.app.data_sources.binance import (
     BinanceAPIError,
     fetch_binance_klines as fetch_binance_klines_data,
 )
+from backend.app.services.backtest_service import (
+    run_backtest as run_backtest_core,
+)
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
@@ -2552,119 +2555,62 @@ def get_risk_chart_figure(df, use_log=False):
 # 5. DCA 回測功能 (Update with Fees)
 # ============================================================
 
-def run_backtest(df, trade_asset, buy_amount, buy_min, buy_max, sell_pct, sell_min, sell_max, start_date, fee_rate=0.001):
-    
-    # 如果不是 BTC/ETH，需要動態抓取該幣種價格
-    price_col = 'asset_price'
-    
+def run_backtest(df,trade_asset,buy_amount,buy_min,buy_max, sell_pct, sell_min, sell_max,  start_date,  fee_rate=0.001,):
+    """
+    準備資產價格後，呼叫純回測服務。
+    """
+
     df_test = df.copy()
-    
-    if trade_asset == 'BTC':
-        df_test['asset_price'] = df_test['close']
+
+    if trade_asset == "BTC":
+        df_test["asset_price"] = df_test["close"]
+
     else:
         asset_symbol = f"{trade_asset}USDT"
-        df_asset = fetch_binance_klines(symbol=asset_symbol)
-        
-        if not df_asset.empty:
-            df_asset = df_asset[['open_time', 'close']].rename(columns={'close': 'asset_price'})
-            df_test = pd.merge(df_test, df_asset, on='open_time', how='left')
-            df_test['asset_price'] = df_test['asset_price'].ffill()
-        else:
-            # 修改回傳值數量，保持一致 (多加一個 0)
-            return pd.DataFrame(), pd.DataFrame(), 0, 0, 0
-            
-    df_test = df_test[df_test['open_time'].dt.date >= start_date]
-    if df_test.empty: return pd.DataFrame(), pd.DataFrame(), 0, 0, 0 # 修改回傳值數量
 
-    asset_balance = 0      
-    total_invested = 0     
-    realized_pnl = 0
-    total_fees = 0 # 累計手續費
-    
-    trade_history = []
-    portfolio_history = []
-    buy_days = 0
-    sell_days = 0
+        df_asset = fetch_binance_klines(
+            symbol=asset_symbol
+        )
 
-    for index, row in df_test.iterrows():
-        price = row[price_col]
-        risk = row['total_risk']
-        date = row['open_time']
-        
-        if pd.isna(price) or price <= 0: continue
-            
-        action = None
-        trade_val = 0
-        trade_amount = 0
-        fee_amount = 0
-        
-        # Buy
-        if buy_min <= risk < buy_max:
-            buy_days += 1
-            action = "BUY"
-            
-            # 手續費計算 (Binance Spot: 扣除手續費後的淨投資額)
-            fee_amount = buy_amount * fee_rate
-            net_invest = buy_amount - fee_amount
-            trade_amount = net_invest / price
-            
-            asset_balance += trade_amount
-            total_invested += buy_amount # 總投入本金還是 buy_amount
-            total_fees += fee_amount
-            
-            trade_val = buy_amount
-            
-        # Sell
-        elif sell_min <= risk < sell_max:
-            sell_days += 1
-            if asset_balance > 0:
-                action = "SELL"
-                amount_to_sell = asset_balance * sell_pct
-                if amount_to_sell > 0:
-                    gross_val = amount_to_sell * price
-                    fee_amount = gross_val * fee_rate
-                    net_val = gross_val - fee_amount # 實際拿到手的 USDT
-                    
-                    avg_cost = total_invested / asset_balance if asset_balance > 0 else 0
-                    cost_of_sold = amount_to_sell * avg_cost
-                    
-                    asset_balance -= amount_to_sell
-                    total_invested -= cost_of_sold 
-                    
-                    # 損益 = 淨回收額 - 成本
-                    realized_pnl += (net_val - cost_of_sold) 
-                    total_fees += fee_amount
-                    
-                    trade_val = net_val
-                    trade_amount = amount_to_sell
+        if df_asset.empty:
+            return (
+                pd.DataFrame(),
+                pd.DataFrame(),
+                0,
+                0,
+                0.0,
+            )
 
-        market_value = asset_balance * price
-        unrealized_pnl = market_value - total_invested
-        total_equity = market_value + realized_pnl 
-        current_avg_cost = total_invested / asset_balance if asset_balance > 0 else 0
-        
-        if action:
-            trade_history.append({
-                'Date': date, 'Type': action, 'Price': price, 'Risk': risk,
-                'Val_USDT': trade_val, 'Amount': trade_amount, 'Fee': fee_amount, 'Balance': asset_balance
-            })
-            
-        # 計算當前最大權益 (for MDD)
-        peak_equity = max(portfolio_history[-1]['Equity'] if portfolio_history else total_equity, total_equity)
-        
-        portfolio_history.append({
-            'Date': date, 
-            'Equity': total_equity, 
-            'Invested': total_invested,
-            'Realized_PnL': realized_pnl, 
-            'Unrealized_PnL': unrealized_pnl,
-            'Total_Fees': total_fees,
-            'Avg_Cost': current_avg_cost,
-            'Peak_Equity': peak_equity
-        })
-    final_price = df_test.iloc[-1]['asset_price'] if not df_test.empty else 0
+        df_asset = df_asset[
+            ["open_time", "close"]
+        ].rename(
+            columns={
+                "close": "asset_price",
+            }
+        )
 
-    return pd.DataFrame(trade_history), pd.DataFrame(portfolio_history), buy_days, sell_days, final_price
+        df_test = pd.merge(
+            df_test,
+            df_asset,
+            on="open_time",
+            how="left",
+        )
+
+        df_test["asset_price"] = (
+            df_test["asset_price"].ffill()
+        )
+
+    return run_backtest_core(
+        df=df_test,
+        buy_amount=buy_amount,
+        buy_min=buy_min,
+        buy_max=buy_max,
+        sell_pct=sell_pct,
+        sell_min=sell_min,
+        sell_max=sell_max,
+        start_date=start_date,
+        fee_rate=fee_rate,
+    )
 
 def run_portfolio_backtest(df_risk, asset_weights, total_daily_buy, buy_min, buy_max, sell_pct, sell_min, sell_max, start_date, fee_rate=0.001):
     all_prices = {}
