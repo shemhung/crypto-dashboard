@@ -13,6 +13,7 @@ import RiskRangeSlider, {
 
 import PortfolioEquityChart from "../components/charts/PortfolioEquityChart";
 import AllocationChart from "../components/charts/AllocationChart";
+import PortfolioTradeTable from "../components/tables/PortfolioTradeTable";
 import type {
   PortfolioBacktestRequest,
   PortfolioBacktestResponse,
@@ -1109,9 +1110,13 @@ function BacktestPage() {
               </table>
             </div>
           </section>
+          <PortfolioTradeTable
+            trades={result.trades}
+          />
         </section>
       )}
     </section>
+    
   );
 }
 

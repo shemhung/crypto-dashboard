@@ -1,0 +1,239 @@
+.portfolio-trade-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid
+    rgba(127, 127, 127, 0.28);
+  border-radius: 14px;
+  background:
+    rgba(127, 127, 127, 0.025);
+}
+
+.portfolio-trade-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 20px 22px;
+  border-bottom: 1px solid
+    rgba(127, 127, 127, 0.22);
+}
+
+.portfolio-trade-heading span {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  opacity: 0.6;
+  text-transform: uppercase;
+}
+
+.portfolio-trade-heading h3 {
+  margin: 5px 0 0;
+}
+
+.portfolio-trade-heading > strong {
+  font-size: 14px;
+}
+
+.portfolio-trade-controls {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding: 18px 22px;
+  border-bottom: 1px solid
+    rgba(127, 127, 127, 0.2);
+}
+
+.portfolio-trade-controls label {
+  display: grid;
+  gap: 7px;
+}
+
+.portfolio-trade-controls label > span,
+.trade-type-filter > span {
+  font-size: 13px;
+  font-weight: 700;
+  opacity: 0.72;
+}
+
+.portfolio-trade-controls select {
+  min-width: 150px;
+  padding: 9px 11px;
+  border: 1px solid
+    rgba(127, 127, 127, 0.4);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.trade-type-filter {
+  display: grid;
+  gap: 7px;
+}
+
+.trade-type-filter > div {
+  display: flex;
+  gap: 7px;
+}
+
+.trade-type-filter button {
+  padding: 8px 13px;
+  border: 1px solid
+    rgba(127, 127, 127, 0.38);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.trade-type-filter button.active {
+  border-color: #2563eb;
+  background:
+    rgba(37, 99, 235, 0.12);
+  font-weight: 700;
+}
+
+.portfolio-trade-summary {
+  display: grid;
+  grid-template-columns:
+    repeat(
+      auto-fit,
+      minmax(150px, 1fr)
+    );
+  gap: 12px;
+  padding: 18px 22px;
+  border-bottom: 1px solid
+    rgba(127, 127, 127, 0.2);
+}
+
+.portfolio-trade-summary article {
+  display: grid;
+  gap: 5px;
+  padding: 13px;
+  border: 1px solid
+    rgba(127, 127, 127, 0.2);
+  border-radius: 9px;
+}
+
+.portfolio-trade-summary span {
+  font-size: 13px;
+  opacity: 0.68;
+}
+
+.portfolio-trade-summary strong {
+  font-size: 17px;
+}
+
+.portfolio-trade-table-wrapper {
+  overflow-x: auto;
+}
+
+.portfolio-trade-table-wrapper table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.portfolio-trade-table-wrapper th,
+.portfolio-trade-table-wrapper td {
+  padding: 12px 14px;
+  border-bottom: 1px solid
+    rgba(127, 127, 127, 0.18);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.portfolio-trade-table-wrapper th {
+  font-size: 13px;
+  opacity: 0.68;
+}
+
+.portfolio-trade-table-wrapper tbody tr:hover {
+  background:
+    rgba(127, 127, 127, 0.06);
+}
+
+.portfolio-trade-type {
+  display: inline-block;
+  min-width: 48px;
+  padding: 4px 7px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.portfolio-trade-type.buy {
+  background:
+    rgba(34, 197, 94, 0.13);
+  color: #16a34a;
+}
+
+.portfolio-trade-type.sell {
+  background:
+    rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+}
+
+.portfolio-trade-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 22px;
+}
+
+.portfolio-trade-pagination > span {
+  font-size: 14px;
+  opacity: 0.7;
+}
+
+.portfolio-trade-pagination > div {
+  display: flex;
+  gap: 8px;
+}
+
+.portfolio-trade-pagination button {
+  padding: 8px 13px;
+  border: 1px solid
+    rgba(127, 127, 127, 0.38);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.portfolio-trade-pagination button:hover:not(:disabled) {
+  background:
+    rgba(127, 127, 127, 0.1);
+}
+
+.portfolio-trade-pagination button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.portfolio-trade-empty {
+  margin: 0;
+  padding: 24px 22px;
+  opacity: 0.7;
+}
+
+@media (max-width: 650px) {
+  .portfolio-trade-heading,
+  .portfolio-trade-pagination {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .portfolio-trade-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .portfolio-trade-controls select {
+    width: 100%;
+  }
+}
