@@ -8,6 +8,9 @@ from backend.app.dependencies import (
 from backend.app.repositories.market_repository import (
     MarketRepository,
 )
+from backend.app.data_sources.binance import (
+    BinanceAPIError,
+)
 from backend.app.schemas.backtest import (
     BacktestRequest,
     BacktestResponse,
