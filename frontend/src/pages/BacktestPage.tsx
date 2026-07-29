@@ -11,6 +11,8 @@ import RiskRangeSlider, {
   type RiskRangeValue,
 } from "../components/forms/RiskRangeSlider";
 
+import PortfolioEquityChart from "../components/charts/PortfolioEquityChart";
+import AllocationChart from "../components/charts/AllocationChart";
 import type {
   PortfolioBacktestRequest,
   PortfolioBacktestResponse,
@@ -997,7 +999,19 @@ function BacktestPage() {
               </small>
             </article>
           </div>
+                
+          <div className="portfolio-chart-grid">
+            <PortfolioEquityChart
+                points={result.equity_curve}
+            />
 
+            <AllocationChart
+                assets={result.assets}
+                cashBalance={
+                result.summary.cash_balance
+                }
+            />
+          </div>
 
           <section className="asset-result-card">
             <div className="asset-result-heading">

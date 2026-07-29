@@ -437,6 +437,9 @@
   .risk-slider-grid {
     grid-template-columns: 1fr;
   }
+  .portfolio-chart-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 760px) {
