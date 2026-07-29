@@ -1,0 +1,137 @@
+.backtest-result-actions {
+  display: grid;
+  gap: 20px;
+  padding: 22px;
+  border: 1px solid
+    rgba(127, 127, 127, 0.28);
+  border-radius: 14px;
+  background:
+    rgba(127, 127, 127, 0.025);
+}
+
+.backtest-result-actions__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 22px;
+}
+
+.backtest-result-actions__heading span {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  opacity: 0.62;
+  text-transform: uppercase;
+}
+
+.backtest-result-actions__heading h3 {
+  margin: 5px 0 0;
+}
+
+.backtest-result-actions__downloads {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.backtest-result-actions__downloads button {
+  padding: 8px 12px;
+  border: 1px solid
+    rgba(127, 127, 127, 0.4);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.backtest-result-actions__downloads button:hover:not(:disabled) {
+  background:
+    rgba(127, 127, 127, 0.1);
+}
+
+.backtest-result-actions__downloads button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.backtest-parameter-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(
+      auto-fit,
+      minmax(170px, 1fr)
+    );
+  gap: 12px;
+}
+
+.backtest-parameter-grid article {
+  display: grid;
+  gap: 7px;
+  padding: 14px;
+  border: 1px solid
+    rgba(127, 127, 127, 0.22);
+  border-radius: 10px;
+}
+
+.backtest-parameter-grid article span {
+  font-size: 13px;
+  opacity: 0.66;
+}
+
+.backtest-parameter-grid article strong {
+  font-size: 15px;
+}
+
+.backtest-allocation-summary {
+  display: grid;
+  gap: 10px;
+}
+
+.backtest-allocation-summary > span {
+  font-size: 13px;
+  font-weight: 700;
+  opacity: 0.68;
+}
+
+.backtest-allocation-summary > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.backtest-allocation-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border: 1px solid
+    rgba(37, 99, 235, 0.35);
+  border-radius: 999px;
+  background:
+    rgba(37, 99, 235, 0.08);
+  font-size: 13px;
+}
+
+@media (max-width: 850px) {
+  .backtest-result-actions__heading {
+    flex-direction: column;
+  }
+
+  .backtest-result-actions__downloads {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 550px) {
+  .backtest-result-actions__downloads {
+    display: grid;
+    width: 100%;
+  }
+
+  .backtest-result-actions__downloads button {
+    width: 100%;
+  }
+}

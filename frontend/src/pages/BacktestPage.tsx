@@ -14,6 +14,7 @@ import RiskRangeSlider, {
 import PortfolioEquityChart from "../components/charts/PortfolioEquityChart";
 import AllocationChart from "../components/charts/AllocationChart";
 import PortfolioTradeTable from "../components/tables/PortfolioTradeTable";
+import BacktestResultActions from "../components/backtest/BacktestResultActions";
 import type {
   PortfolioBacktestRequest,
   PortfolioBacktestResponse,
@@ -211,7 +212,12 @@ function BacktestPage() {
     useState<PortfolioBacktestResponse | null>(
       null,
     );
-
+    const [
+    lastRequest,
+    setLastRequest,
+    ] = useState<PortfolioBacktestRequest | null>(
+    null,
+    );
   const [running, setRunning] =
     useState(false);
 
@@ -441,9 +447,10 @@ function BacktestPage() {
       };
 
     try {
-      setRunning(true);
-      setError("");
-      setResult(null);
+        setRunning(true);
+        setError("");
+        setResult(null);
+        setLastRequest(null);
 
       const response =
         await createPortfolioBacktest(
@@ -452,6 +459,7 @@ function BacktestPage() {
         );
 
       setResult(response);
+      setLastRequest(request);
     } catch (err) {
       setError(
         err instanceof Error
@@ -861,7 +869,7 @@ function BacktestPage() {
       </form>
 
 
-      {result && (
+      {result && lastRequest&&  (
         <section className="portfolio-result-section">
           <div className="portfolio-result-heading">
             <div>
@@ -880,7 +888,10 @@ function BacktestPage() {
               筆交易
             </span>
           </div>
-
+          <BacktestResultActions
+            request={lastRequest}
+            result={result}
+          />
 
           <div className="portfolio-summary-grid">
             <article
