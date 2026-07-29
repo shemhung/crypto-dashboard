@@ -20,28 +20,140 @@
   opacity: 0.7;
 }
 
-.date-range {
+.current-date-range {
   display: grid;
-  grid-template-columns: auto auto;
-  gap: 4px 12px;
+  gap: 4px;
   padding: 12px 16px;
-  border: 1px solid rgba(127, 127, 127, 0.3);
+  border: 1px solid
+    rgba(127, 127, 127, 0.3);
   border-radius: 10px;
   font-size: 14px;
 }
 
-.date-range span {
+.current-date-range span {
   opacity: 0.65;
 }
 
+.range-control-card {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid
+    rgba(127, 127, 127, 0.3);
+  border-radius: 12px;
+}
+
+.preset-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.preset-buttons button,
+.apply-range-button {
+  padding: 8px 16px;
+  border: 1px solid
+    rgba(127, 127, 127, 0.4);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.preset-buttons button:hover,
+.apply-range-button:hover {
+  background:
+    rgba(127, 127, 127, 0.12);
+}
+
+.preset-buttons button.active {
+  border-color: currentColor;
+  background:
+    rgba(127, 127, 127, 0.18);
+  font-weight: 700;
+}
+
+.custom-range-controls {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.custom-range-controls label {
+  display: grid;
+  gap: 6px;
+}
+
+.custom-range-controls label span {
+  font-size: 13px;
+  opacity: 0.7;
+}
+
+.custom-range-controls input {
+  padding: 8px 10px;
+  border: 1px solid
+    rgba(127, 127, 127, 0.4);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.apply-range-button {
+  font-weight: 700;
+}
+
+.date-error {
+  margin: 0;
+  font-size: 14px;
+}
+
+.risk-analysis-message,
 .risk-analysis-error {
   padding: 16px;
-  border: 1px solid currentColor;
+  border: 1px solid
+    rgba(127, 127, 127, 0.3);
   border-radius: 10px;
+}
+
+.risk-analysis-error {
+  border-color: currentColor;
+}
+
+.risk-analysis-error p {
+  margin-bottom: 0;
+}
+
+.risk-record-summary {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.risk-record-summary span {
+  opacity: 0.7;
 }
 
 @media (max-width: 760px) {
   .risk-analysis-heading {
     flex-direction: column;
+  }
+
+  .current-date-range {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .custom-range-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .apply-range-button {
+    width: 100%;
   }
 }
