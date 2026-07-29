@@ -48,7 +48,20 @@ router = APIRouter(
     prefix="/api/v1/backtests",
     tags=["backtests"],
 )
+def normalize_daily_datetime(
+    values: pd.Series,
+) -> pd.Series:
+    """統一轉為無時區的每日日期。"""
 
+    return (
+        pd.to_datetime(
+            values,
+            errors="coerce",
+            utc=True,
+        )
+        .dt.tz_convert(None)
+        .dt.normalize()
+    )
 def prepare_portfolio_market_data(
     risk_records: list[dict],
     allocations: list,
@@ -89,11 +102,9 @@ def prepare_portfolio_market_data(
         )
 
     risk_data["open_time"] = (
-        pd.to_datetime(
-            risk_data["score_time"],
-            errors="coerce",
+        normalize_daily_datetime(
+            risk_data["score_time"]
         )
-        .dt.normalize()
     )
 
     risk_data["total_risk"] = (
@@ -153,11 +164,9 @@ def prepare_portfolio_market_data(
         asset_data = asset_data.copy()
 
         asset_data["open_time"] = (
-            pd.to_datetime(
-                asset_data["open_time"],
-                errors="coerce",
+            normalize_daily_datetime(
+                asset_data["open_time"]
             )
-            .dt.normalize()
         )
 
         asset_data[asset] = (

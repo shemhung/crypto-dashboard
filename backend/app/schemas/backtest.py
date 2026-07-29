@@ -207,7 +207,6 @@ class PortfolioBacktestRequest(BaseModel):
         PortfolioAllocationRequest
     ] = Field(
         min_length=1,
-        max_length=8,
     )
 
     @field_validator("risk_symbol")

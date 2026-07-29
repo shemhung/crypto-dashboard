@@ -95,7 +95,7 @@ def run_backtest(
             trade_value = buy_amount
 
         # 賣出
-        elif sell_min <= risk < sell_max:
+        elif sell_min <= risk <= sell_max:
             sell_days += 1
 
             if asset_balance > 0:
