@@ -12,6 +12,7 @@ on:
     paths:
       - ".github/workflows/daily_update.yml"
       - "backend/app/jobs/**"
+      - "backend/app/data_sources/binance.py"
       - "backend/app/data_sources/fear_greed.py"
       - "backend/app/repositories/risk_update_repository.py"
       - "backend/app/services/risk_update_service.py"
@@ -57,9 +58,5 @@ jobs:
       - name: Update BTC market and risk data
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          WEBSHARE_API_TOKEN: ${{ secrets.WEBSHARE_API_TOKEN }}
-          WEBSHARE_PROXY_MODE: direct
-          PROXY_EXCLUDE_COUNTRIES: US
-          PROXY_PREFERRED_COUNTRIES: JP,GB
         run: |
           python -m backend.app.jobs.update_daily_risk

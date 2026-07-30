@@ -29,7 +29,7 @@ def fetch_binance_klines(
     不負責顯示 Streamlit 畫面。
     """
 
-    url = "https://api.binance.com/api/v3/klines"
+    url = "https://data-api.binance.vision/api/v3/klines"
     all_data = []
 
     start_time = int(pd.to_datetime(start_date).timestamp() * 1000)
