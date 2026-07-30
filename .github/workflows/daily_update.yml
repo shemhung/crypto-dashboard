@@ -2,12 +2,31 @@ name: Daily Data Update
 
 on:
   schedule:
-    - cron: '0 2 * * *'  # 每天 UTC 02:00 = 台灣早上 10:00
-  workflow_dispatch:      # 允許手動按鈕觸發
+    - cron: "0 2 * * *"
+
+  workflow_dispatch:
+
+  push:
+    branches:
+      - refactor/backend-core
+    paths:
+      - ".github/workflows/daily_update.yml"
+      - "backend/app/jobs/**"
+      - "backend/app/data_sources/fear_greed.py"
+      - "backend/app/repositories/risk_update_repository.py"
+      - "backend/app/services/risk_update_service.py"
+
+concurrency:
+  group: daily-data-update
+  cancel-in-progress: false
 
 jobs:
   update-data:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      PYTHONUNBUFFERED: "1"
 
     steps:
       - name: Checkout code
@@ -16,22 +35,31 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
+          cache: "pip"
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # 執行 Wiki 更新：寫入 Supabase wiki_metric
       - name: Run Wiki Supabase Sync
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: python app_wiki.py
 
-      # 執行 YouTube 更新：寫入 Supabase youtube_metric
       - name: Run YouTube Supabase Sync
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
         run: python app_yt.py 1
+
+      - name: Update BTC market and risk data
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          WEBSHARE_API_TOKEN: ${{ secrets.WEBSHARE_API_TOKEN }}
+          WEBSHARE_PROXY_MODE: direct
+          PROXY_EXCLUDE_COUNTRIES: US
+          PROXY_PREFERRED_COUNTRIES: JP,GB
+        run: |
+          python -m backend.app.jobs.update_daily_risk

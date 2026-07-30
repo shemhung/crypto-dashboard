@@ -88,7 +88,7 @@ def use_fake_repository(
 
 
 def test_health_endpoint(client: TestClient):
-    response = client.get("/health")
+    response = client.get("/api/v1/health")
 
     assert response.status_code == 200
     assert response.json() == {
