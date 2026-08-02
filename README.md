@@ -8,8 +8,11 @@ Crypto Risk Dashboard
 
 flowchart LR
     U[使用者瀏覽器] -->|HTTP :5173| N[Nginx]
+   
     N --> R[React + TypeScript]
+    
     N -->|/api/*| F[FastAPI + Uvicorn]
+  
     F -->|SQLAlchemy| P[(PostgreSQL / Supabase)]
     F --> B[Binance Market API]
     F --> G[Fear & Greed API]
