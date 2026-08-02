@@ -7,6 +7,7 @@ Crypto Risk Dashboard
 系統架構
 
 flowchart LR
+    
     U[使用者瀏覽器] -->|HTTP :5173| N[Nginx]
    
     N --> R[React + TypeScript]
@@ -14,11 +15,17 @@ flowchart LR
     N -->|/api/*| F[FastAPI + Uvicorn]
   
     F -->|SQLAlchemy| P[(PostgreSQL / Supabase)]
+   
     F --> B[Binance Market API]
+   
     F --> G[Fear & Greed API]
+    
     A[GitHub Actions] --> W[Wikipedia / YouTube Update]
+    
     A --> J[Daily Risk Update Job]
+    
     W --> P
+    
     J --> P
 
 目前 Docker Compose 管理兩個 application services：
