@@ -281,7 +281,7 @@ function RiskRainbowChart({
         Number.isFinite(record.total_risk)
       );
     })
-    .map((record) => [
+    .map((record): ChartPoint => [
       new Date(record.score_time).getTime(),
       record.price as number,
       record.total_risk,

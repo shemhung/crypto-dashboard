@@ -1,0 +1,33 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+
+    image: crypto-dashboard-backend:dev
+
+    env_file:
+      - .env
+
+    ports:
+      - "8000:8000"
+
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_BASE_URL: ""
+
+    image: crypto-dashboard-frontend:dev
+
+    depends_on:
+      backend:
+        condition: service_healthy
+
+    ports:
+      - "5173:80"
+
+    restart: unless-stopped

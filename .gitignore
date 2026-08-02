@@ -7,3 +7,4 @@ __pycache__/
 cache_data/
 
 *.html
+!frontend/index.html
