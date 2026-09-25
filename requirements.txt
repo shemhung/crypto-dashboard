@@ -12,6 +12,7 @@ pandas-datareader
 setuptools
 sqlalchemy
 psycopg2-binary
+psycopg[binary]
 python-dotenv
 sqlalchemy
 psycopg2-binary
